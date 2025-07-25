@@ -23,3 +23,7 @@ dependencies = [
 [project.urls]
 "Homepage" = "https://github.com/elkadi/spec4ml_py"
 "Bug Tracker" = "https://github.com/elkadi/spec4ml_py/issues"
+
+[tool.setuptools.packages.find]
+where = ["."] # Look for packages starting from the current directory (repo root)
+include = ["spec4ml_py*"] # Specifically include the 'spec4ml_py' package and its subpackages
