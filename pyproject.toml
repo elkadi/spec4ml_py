@@ -22,5 +22,5 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = ""https://github.com/elkadi/spec4ml_py"
+"Homepage" = "https://github.com/elkadi/spec4ml_py"
 "Bug Tracker" = "https://github.com/elkadi/spec4ml_py/issues"
