@@ -561,3 +561,194 @@ def get_first_float_column_index(df):
             continue
     raise ValueError("No column names can be converted to float.")
 ##################################################################################
+def FeatureImportanceEvaluation2(
+    Selected_Preprocessings,
+    Selected_Pipelines,
+    TestSets,
+    Sample_ID,
+    target,
+    Spectra_Start_Index=16,
+    Excluded_Feature=None,
+    Prediction_Type='Predictions_Medians',
+    data_folder="SelectedSpectra"
+):
+    """
+    Evaluate multiple ML pipelines with specific features replaced by their mean (interval ablation by substitution).
+    """
+
+    # Output collectors
+    Pipelineindex, Preprocessing, Set = [], [], []
+    Test_Samples_ID, Groundtruths, Predictions = [], [], []
+    training_times = []
+
+    for p, s, pi in zip(range(1, len(Selected_Preprocessings) + 1), Selected_Preprocessings, Selected_Pipelines):
+        # Load preprocessed spectra file
+        file_path = os.path.join(data_folder, f"{s}.csv")
+        file = pd.read_csv(file_path, sep=",", index_col="Spectra")
+
+        for i, TestIndex in enumerate(TestSets):
+            # Train-test split
+            Training_data = file[~file[Sample_ID].isin(TestIndex)].copy()
+            Testing_data = file[file[Sample_ID].isin(TestIndex)].copy()
+
+            # Replace selected features in testing set with training mean
+            if Excluded_Feature:
+                for feat in Excluded_Feature:
+                    mean_val = Training_data[feat].mean()
+                    Testing_data.loc[:, feat] = mean_val
+
+            # Extract training and testing features
+            training_features = Training_data.iloc[:, Spectra_Start_Index:]
+            training_target = Training_data[target]
+
+            testing_target = Testing_data.groupby(Sample_ID)[target].mean()
+            testing_features = Testing_data.groupby(Sample_ID).apply(
+                lambda x: x.iloc[:, Spectra_Start_Index:].mean()
+            )
+
+            # Store test IDs and ground truths
+            Groundtruths.append(testing_target)
+            Test_Samples_ID.append(testing_target.index.tolist())
+
+            # Set random state
+            if hasattr(pi, 'steps'):
+                set_param_recursive(pi.steps, 'random_state', 11)
+            elif hasattr(pi, 'random_state'):
+                pi.random_state = 11
+
+            # Train
+            t_start = time.time()
+            pi.fit(training_features, training_target)
+            t_end = time.time()
+            training_times.append(t_end - t_start)
+
+            # Predict
+            prediction = pi.predict(testing_features)
+            Predictions.append(pd.Series(prediction, index=testing_target.index))
+
+            # Record run info
+            Pipelineindex.append(p)
+            Preprocessing.append(s)
+            Set.append(i + 1)
+
+    # Create prediction summary
+    predictions_df = pd.DataFrame({
+        'Pipeline': Pipelineindex,
+        'Preprocessing': Preprocessing,
+        'Set': Set,
+        'Sample_IDs': Test_Samples_ID,
+        'Groundtruths': Groundtruths,
+        'Predictions': Predictions
+    })
+
+    # Flatten lists for evaluation
+    predictions_SA_long = predictions_df.explode(['Sample_IDs', 'Groundtruths', 'Predictions']).reset_index(drop=True)
+
+    # Aggregate predictions
+    from evaluation_functions import aggregate_sample_predictions, evaluate_predictions
+    Final_Results_5CV_ALL_SA = aggregate_sample_predictions(predictions_SA_long)
+
+    # Evaluate predictions
+    results_summary_SA = {}
+    prediction_columns = ["Predictions_Medians", "Predictions_Means", "Predictions_Mean_Corrected", "Predictions_Medians_Corrected"]
+    for col in prediction_columns:
+        results_summary_SA[col] = evaluate_predictions(Final_Results_5CV_ALL_SA["Groundtruths"], Final_Results_5CV_ALL_SA[col])
+
+    R2n = results_summary_SA[Prediction_Type]["r2"]
+    MAEn = results_summary_SA[Prediction_Type]["MAE"]
+    Rn = results_summary_SA[Prediction_Type]["r"]
+
+    return Excluded_Feature, R2n, MAEn, Rn
+
+##################################################################################
+def EnsembelML(
+    Selected_Preprocessings,
+    Selected_Pipelines,
+    TestSets,
+    Sample_ID,
+    target,
+    Spectra_Start_Index=16,
+    Prediction_Type='Predictions_Medians',
+    data_folder="SelectedSpectra"
+):
+    """
+    Evaluate an ensemble model based on multiple ML pipelines.
+    """
+
+    # Output collectors
+    Pipelineindex, Preprocessing, Set = [], [], []
+    Test_Samples_ID, Groundtruths, Predictions = [], [], []
+    training_times = []
+
+    for p, s, pi in zip(range(1, len(Selected_Preprocessings) + 1), Selected_Preprocessings, Selected_Pipelines):
+        # Load preprocessed spectra file
+        file_path = os.path.join(data_folder, f"{s}.csv")
+        file = pd.read_csv(file_path, sep=",", index_col="Spectra")
+
+        for i, TestIndex in enumerate(TestSets):
+            # Train-test split
+            Training_data = file[~file[Sample_ID].isin(TestIndex)].copy()
+            Testing_data = file[file[Sample_ID].isin(TestIndex)].copy()
+
+            # Extract training and testing features
+            training_features = Training_data.iloc[:, Spectra_Start_Index:]
+            training_target = Training_data[target]
+
+            testing_target = Testing_data.groupby(Sample_ID)[target].mean()
+            testing_features = Testing_data.groupby(Sample_ID).apply(
+                lambda x: x.iloc[:, Spectra_Start_Index:].mean()
+            )
+
+            # Store test IDs and ground truths
+            Groundtruths.append(testing_target)
+            Test_Samples_ID.append(testing_target.index.tolist())
+
+            # Set random state
+            if hasattr(pi, 'steps'):
+                set_param_recursive(pi.steps, 'random_state', 11)
+            elif hasattr(pi, 'random_state'):
+                pi.random_state = 11
+
+            # Train
+            t_start = time.time()
+            pi.fit(training_features, training_target)
+            t_end = time.time()
+            training_times.append(t_end - t_start)
+
+            # Predict
+            prediction = pi.predict(testing_features)
+            Predictions.append(pd.Series(prediction, index=testing_target.index))
+
+            # Record run info
+            Pipelineindex.append(p)
+            Preprocessing.append(s)
+            Set.append(i + 1)
+
+    # Create prediction summary
+    predictions_df = pd.DataFrame({
+        'Pipeline': Pipelineindex,
+        'Preprocessing': Preprocessing,
+        'Set': Set,
+        'Sample_IDs': Test_Samples_ID,
+        'Groundtruths': Groundtruths,
+        'Predictions': Predictions
+    })
+
+    # Flatten lists for evaluation
+    predictions_SA_long = predictions_df.explode(['Sample_IDs', 'Groundtruths', 'Predictions']).reset_index(drop=True)
+
+    # Aggregate predictions
+    from evaluation_functions import aggregate_sample_predictions, evaluate_predictions
+    Final_Results_5CV_ALL_SA = aggregate_sample_predictions(predictions_SA_long)
+
+    # Evaluate predictions
+    results_summary_SA = {}
+    prediction_columns = ["Predictions_Medians", "Predictions_Means", "Predictions_Mean_Corrected", "Predictions_Medians_Corrected"]
+    for col in prediction_columns:
+        results_summary_SA[col] = evaluate_predictions(Final_Results_5CV_ALL_SA["Groundtruths"], Final_Results_5CV_ALL_SA[col])
+
+    R2n = results_summary_SA[Prediction_Type]["r2"]
+    MAEn = results_summary_SA[Prediction_Type]["MAE"]
+    Rn = results_summary_SA[Prediction_Type]["r"]
+
+    return R2n, MAEn, Rn, Final_Results_5CV_ALL_SA[col]
