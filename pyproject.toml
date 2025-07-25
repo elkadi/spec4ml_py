@@ -9,7 +9,6 @@ authors = [
   { name="Omar Anwar Elkadi", email="omar.elkadi@live.com" },
 ]
 description = "Python package for handling and analyzing spectral data."
-readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3",
