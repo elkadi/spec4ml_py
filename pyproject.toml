@@ -15,10 +15,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-dependencies = [
-    "requests", # Example dependency
-    "numpy>=1.20",
-]
 
 [project.urls]
 "Homepage" = "https://github.com/elkadi/spec4ml_py"
