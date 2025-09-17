@@ -864,4 +864,4 @@ def EnsembelML(
     MAEn = results_summary_SA[Prediction_Type]["MAE"]
     Rn = results_summary_SA[Prediction_Type]["r"]
 
-    return R2n, MAEn, Rn, Final_Results_5CV_ALL_SA[col]
+    return R2n, MAEn, Rn, Final_Results_5CV_ALL_SA[col], Final_Results_5CV_ALL_SA
