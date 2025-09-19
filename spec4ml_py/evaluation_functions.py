@@ -782,18 +782,20 @@ def EnsembelML(
     target,
     Spectra_Start_Index=16,
     Prediction_Type='Predictions_Medians',
-    data_folder="SelectedSpectra"
+    data_folder="SelectedSpectra",
+    seed=11
 ):
     """
     Evaluate an ensemble model based on multiple ML pipelines.
     """
-
+    np.random.seed(seed)
+    random.seed(seed)
     # Output collectors
     Pipelineindex, Preprocessing, Set = [], [], []
     Test_Samples_ID, Groundtruths, Predictions = [], [], []
     training_times = []
 
-    for p, s, pi in zip(range(1, len(Selected_Preprocessings) + 1), Selected_Preprocessings, Selected_Pipelines):
+    for p, s, pin in zip(range(1, len(Selected_Preprocessings) + 1), Selected_Preprocessings, Selected_Pipelines):
         # Load preprocessed spectra file
         file_path = os.path.join(data_folder, f"{s}.csv")
         file = pd.read_csv(file_path, sep=",", index_col="Spectra")
@@ -815,12 +817,12 @@ def EnsembelML(
             # Store test IDs and ground truths
             Groundtruths.append(testing_target)
             Test_Samples_ID.append(testing_target.index.tolist())
-
+            pi=pin.copy()
             # Set random state
             if hasattr(pi, 'steps'):
-                set_param_recursive(pi.steps, 'random_state', 11)
+                set_param_recursive(pi.steps, 'random_state', seed)
             elif hasattr(pi, 'random_state'):
-                pi.random_state = 11
+                pi.random_state = seed
 
             # Train
             t_start = time.time()
@@ -864,4 +866,4 @@ def EnsembelML(
     MAEn = results_summary_SA[Prediction_Type]["MAE"]
     Rn = results_summary_SA[Prediction_Type]["r"]
 
-    return R2n, MAEn, Rn, Final_Results_5CV_ALL_SA[col], Final_Results_5CV_ALL_SA, results_summary_SA
+    return R2n, MAEn, Rn, Final_Results_5CV_ALL_SA[Prediction_Type], Final_Results_5CV_ALL_SA, results_summary_SA
