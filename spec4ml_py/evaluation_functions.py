@@ -774,7 +774,7 @@ def FeatureImportanceEvaluation_Retrain(
     return Excluded_Feature, R2n, MAEn, Rn
 
 ##################################################################################
-def EnsembelML(
+def EnsembleML(
     Selected_Preprocessings,
     Selected_Pipelines,
     TestSets,
@@ -788,6 +788,7 @@ def EnsembelML(
     """
     Evaluate an ensemble model based on multiple ML pipelines.
     """
+    from evaluation_functions import aggregate_sample_predictions, evaluate_predictions
     np.random.seed(seed)
     random.seed(seed)
     # Output collectors
@@ -817,7 +818,7 @@ def EnsembelML(
             # Store test IDs and ground truths
             Groundtruths.append(testing_target)
             Test_Samples_ID.append(testing_target.index.tolist())
-            pi=pin.copy()
+            pi=clone(pin)
             # Set random state
             if hasattr(pi, 'steps'):
                 set_param_recursive(pi.steps, 'random_state', seed)
@@ -853,7 +854,6 @@ def EnsembelML(
     predictions_SA_long = predictions_df.explode(['Sample_IDs', 'Groundtruths', 'Predictions']).reset_index(drop=True)
 
     # Aggregate predictions
-    from evaluation_functions import aggregate_sample_predictions, evaluate_predictions
     Final_Results_5CV_ALL_SA = aggregate_sample_predictions(predictions_SA_long)
 
     # Evaluate predictions
