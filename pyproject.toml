@@ -1,25 +1,58 @@
+
 [build-system]
-requires = ["setuptools>=61.0.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling>=1.21.1"]
+build-backend = "hatchling.build"
 
 [project]
-name = "spec4ml_py"
-version = "0.0.1"
+name = "spec4ml-py"
+# Use dynamic version from the package __init__.py to avoid drift
+dynamic = ["version"]
+description = "a package for handling and analyzing spectral data with special considerations for machine learning applications"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "BSD-3-Clause" }
 authors = [
-  { name="Omar Anwar Elkadi", email="omar.elkadi@live.com" },
+  { name = "Omar Anwar Elkadi", email = "Omar.elkadi@live.com" },
 ]
-description = "Python package for handling and analyzing spectral data."
-requires-python = ">=3.8"
+keywords = ["spectroscopy", "machine-learning", "preprocessing"]
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "License :: OSI Approved :: BSD License",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+  "numpy>=1.23",
+  "scipy>=1.9",
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/elkadi/spec4ml_py"
-"Bug Tracker" = "https://github.com/elkadi/spec4ml_py/issues"
+Homepage = "https://github.com/elkadi/spec4ml_py"
+Issues = "https://github.com/elkadi/spec4ml_py/issues"
+Documentation = "https://github.com/elkadi/spec4ml_py#readme"
 
-[tool.setuptools.packages.find]
-where = ["."] # Look for packages starting from the current directory (repo root)
-include = ["spec4ml_py*"] # Specifically include the 'spec4ml_py' package and its subpackages
+[project.optional-dependencies]
+dev = [
+  "pytest>=7",
+  "pytest-cov>=4",
+  "mypy>=1.6",
+  "ruff>=0.5",
+  "black>=24",
+  "build>=1.2",
+  "twine>=5",
+  "pre-commit>=3.7",
+]
+
+[tool.hatch.version]
+path = "spec4ml_py/__init__.py"
+
+[tool.hatch.build]
+include = [
+  "spec4ml_py/**",
+  "README.md",
+  "LICENSE",
+  "CITATION.cff",
+  "CHANGELOG.md",
+]
