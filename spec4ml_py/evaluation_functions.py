@@ -224,7 +224,8 @@ def pipeline_testsets_evaluation(
     Sample_ID,
     target,
     Spectra_Start_Index=16,
-    data_folder="SelectedSpectra"
+    data_folder="SelectedSpectra",
+    seed=11
 ):
     """
     Evaluate multiple ML pipelines and their crossponding preprocessing on external test sets where each sample has technical replicates.
@@ -243,7 +244,8 @@ def pipeline_testsets_evaluation(
         metrics_df (pd.DataFrame): DataFrame with MAE, NMAE, R², training time, etc.
         predictions_df (pd.DataFrame): DataFrame with per-sample predictions.
     """
-
+    np.random.seed(seed)
+    random.seed(seed)
     start_time = time.time()
 
     # Output collectors
@@ -251,7 +253,7 @@ def pipeline_testsets_evaluation(
     Test_Samples_ID, Groundtruths, Predictions = [], [], []
     training_times, MAEs, NMAEs, R2s = [], [], [], []
 
-    for p, s, pi in zip(range(1, len(Selected_Preprocessings)+1), Selected_Preprocessings, Selected_Pipelines):
+    for p, s, pin in zip(range(1, len(Selected_Preprocessings)+1), Selected_Preprocessings, Selected_Pipelines):
         print(f"Evaluating pipeline {p}/{len(Selected_Preprocessings)}")
 
         # Load file
@@ -276,7 +278,7 @@ def pipeline_testsets_evaluation(
             # Store test IDs and ground truths
             Groundtruths.append(testing_target)
             Test_Samples_ID.append(testing_target.index.tolist())
-
+            pi=clone(pin)
             # Set random state if possible
             if hasattr(pi, 'steps'):
                 set_param_recursive(pi.steps, 'random_state', 11)
