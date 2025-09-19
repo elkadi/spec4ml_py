@@ -647,7 +647,7 @@ def FeatureImportanceEvaluation2(
     predictions_SA_long = predictions_df.explode(['Sample_IDs', 'Groundtruths', 'Predictions']).reset_index(drop=True)
 
     # Aggregate predictions
-    from evaluation_functions import aggregate_sample_predictions, evaluate_predictions
+    #from evaluation_functions import aggregate_sample_predictions, evaluate_predictions
     Final_Results_5CV_ALL_SA = aggregate_sample_predictions(predictions_SA_long)
 
     # Evaluate predictions
@@ -760,7 +760,7 @@ def FeatureImportanceEvaluation_Retrain(
     predictions_SA_long = predictions_df.explode(['Sample_IDs', 'Groundtruths', 'Predictions']).reset_index(drop=True)
 
     # Aggregate predictions
-    from evaluation_functions import aggregate_sample_predictions, evaluate_predictions
+    #from evaluation_functions import aggregate_sample_predictions, evaluate_predictions
     Final_Results_5CV_ALL_SA = aggregate_sample_predictions(predictions_SA_long)
 
     # Evaluate predictions
@@ -790,7 +790,7 @@ def EnsembleML(
     """
     Evaluate an ensemble model based on multiple ML pipelines.
     """
-    from evaluation_functions import aggregate_sample_predictions, evaluate_predictions, pipeline_testsets_evaluation
+    #from evaluation_functions import aggregate_sample_predictions, evaluate_predictions, pipeline_testsets_evaluation
     np.random.seed(seed)
     random.seed(seed)
     predictions_df=pipeline_testsets_evaluation(
