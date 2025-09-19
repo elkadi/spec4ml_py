@@ -790,67 +790,19 @@ def EnsembleML(
     """
     Evaluate an ensemble model based on multiple ML pipelines.
     """
-    from evaluation_functions import aggregate_sample_predictions, evaluate_predictions
+    from evaluation_functions import aggregate_sample_predictions, evaluate_predictions, pipeline_testsets_evaluation
     np.random.seed(seed)
     random.seed(seed)
-    # Output collectors
-    Pipelineindex, Preprocessing, Set = [], [], []
-    Test_Samples_ID, Groundtruths, Predictions = [], [], []
-    training_times = []
-
-    for p, s, pin in zip(range(1, len(Selected_Preprocessings) + 1), Selected_Preprocessings, Selected_Pipelines):
-        # Load preprocessed spectra file
-        file_path = os.path.join(data_folder, f"{s}.csv")
-        file = pd.read_csv(file_path, sep=",", index_col="Spectra")
-
-        for i, TestIndex in enumerate(TestSets):
-            # Train-test split
-            Training_data = file[~file[Sample_ID].isin(TestIndex)].copy()
-            Testing_data = file[file[Sample_ID].isin(TestIndex)].copy()
-
-            # Extract training and testing features
-            training_features = Training_data.iloc[:, Spectra_Start_Index:]
-            training_target = Training_data[target]
-
-            testing_target = Testing_data.groupby(Sample_ID)[target].mean()
-            testing_features = Testing_data.groupby(Sample_ID).apply(
-                lambda x: x.iloc[:, Spectra_Start_Index:].mean()
-            )
-
-            # Store test IDs and ground truths
-            Groundtruths.append(testing_target)
-            Test_Samples_ID.append(testing_target.index.tolist())
-            pi=clone(pin)
-            # Set random state
-            if hasattr(pi, 'steps'):
-                set_param_recursive(pi.steps, 'random_state', seed)
-            elif hasattr(pi, 'random_state'):
-                pi.random_state = seed
-
-            # Train
-            t_start = time.time()
-            pi.fit(training_features, training_target)
-            t_end = time.time()
-            training_times.append(t_end - t_start)
-
-            # Predict
-            prediction = pi.predict(testing_features)
-            Predictions.append(pd.Series(prediction, index=testing_target.index))
-
-            # Record run info
-            Pipelineindex.append(p)
-            Preprocessing.append(s)
-            Set.append(i + 1)
-
-    # Create prediction summary
-    predictions_df = pd.DataFrame({
-        'Pipeline': Pipelineindex,
-        'Preprocessing': Preprocessing,
-        'Set': Set,
-        'Sample_IDs': Test_Samples_ID,
-        'Groundtruths': Groundtruths,
-        'Predictions': Predictions
-    })
+    predictions_df=pipeline_testsets_evaluation(
+    Selected_Preprocessings=Selected_Preprocessings,
+    Selected_Pipelines=Selected_Pipelines,
+    TestSets=TestSets,
+    Sample_ID=Sample_ID,
+    target=target,
+    Spectra_Start_Index=Spectra_Start_Index,
+    data_folder=data_folder,
+    seed=seed
+    )[1]
 
     # Flatten lists for evaluation
     predictions_SA_long = predictions_df.explode(['Sample_IDs', 'Groundtruths', 'Predictions']).reset_index(drop=True)
