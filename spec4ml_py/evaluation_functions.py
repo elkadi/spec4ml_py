@@ -685,7 +685,7 @@ def feature_block_importance(
     Target,
     Prediction_Type,
     Data_folder,
-    nterval_size=10,
+    interval_size=10,
     step_size=5,
     verbose=True,
     logger=None
