@@ -739,7 +739,7 @@ def feature_block_importance(
 
     start_time = time.time()
 
-    for start_idx in range(0, num_features - interval_size + 1, step_size):
+    for start_idx in range(1, num_features - interval_size + 1, step_size):
         elapsed_min = (time.time() - start_time) / 60
         message = f"Evaluating Excluded Features {start_idx} | Elapsed: {elapsed_min:.2f} min"
         
