@@ -2,6 +2,7 @@
 import os
 import sys
 import time
+import logging
 import glob
 import random
 import warnings
@@ -28,7 +29,7 @@ from sklearn.decomposition import FastICA
 from sklearn.ensemble import (
     AdaBoostRegressor, RandomForestRegressor, ExtraTreesRegressor, GradientBoostingRegressor
 )
-from sklearn.linear_model import ElasticNetCV, SGDRegressor, RidgeCV
+from sklearn.linear_model import ElasticNetCV, SGDRegressor, RidgeCV, LinearRegression
 from sklearn.preprocessing import (
     FunctionTransformer, PolynomialFeatures, StandardScaler, Binarizer,
     MinMaxScaler, MaxAbsScaler, RobustScaler, Normalizer
@@ -402,9 +403,6 @@ def pipeline_LOOCV_evaluation(
     return pd.DataFrame(results)
 #########################################################################
 
-from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import cross_val_predict, KFold
-
 def pipeline_LOOCV_evaluation_with_residual_correction(
     Selected_Preprocessings,
     Selected_Pipelines,
@@ -563,106 +561,6 @@ def get_first_float_column_index(df):
             continue
     raise ValueError("No column names can be converted to float.")
 ##################################################################################
-def FeatureImportanceEvaluation2(
-    Selected_Preprocessings,
-    Selected_Pipelines,
-    TestSets,
-    Sample_ID,
-    target,
-    Spectra_Start_Index=16,
-    Excluded_Feature=None,
-    Prediction_Type='Predictions_Medians',
-    data_folder="SelectedSpectra"
-):
-    """
-    Evaluate multiple ML pipelines with specific features replaced by their mean (interval ablation by substitution).
-    """
-
-    # Output collectors
-    Pipelineindex, Preprocessing, Set = [], [], []
-    Test_Samples_ID, Groundtruths, Predictions = [], [], []
-    training_times = []
-
-    for p, s, pi in zip(range(1, len(Selected_Preprocessings) + 1), Selected_Preprocessings, Selected_Pipelines):
-        # Load preprocessed spectra file
-        file_path = os.path.join(data_folder, f"{s}.csv")
-        file = pd.read_csv(file_path, sep=",", index_col="Spectra")
-
-        for i, TestIndex in enumerate(TestSets):
-            # Train-test split
-            Training_data = file[~file[Sample_ID].isin(TestIndex)].copy()
-            Testing_data = file[file[Sample_ID].isin(TestIndex)].copy()
-
-            # Replace selected features in testing set with training mean
-            if Excluded_Feature:
-                for feat in Excluded_Feature:
-                    mean_val = Training_data[feat].mean()
-                    Testing_data.loc[:, feat] = mean_val
-
-            # Extract training and testing features
-            training_features = Training_data.iloc[:, Spectra_Start_Index:]
-            training_target = Training_data[target]
-
-            testing_target = Testing_data.groupby(Sample_ID)[target].mean()
-            testing_features = Testing_data.groupby(Sample_ID).apply(
-                lambda x: x.iloc[:, Spectra_Start_Index:].mean()
-            )
-
-            # Store test IDs and ground truths
-            Groundtruths.append(testing_target)
-            Test_Samples_ID.append(testing_target.index.tolist())
-
-            # Set random state
-            if hasattr(pi, 'steps'):
-                set_param_recursive(pi.steps, 'random_state', 11)
-            elif hasattr(pi, 'random_state'):
-                pi.random_state = 11
-
-            # Train
-            t_start = time.time()
-            pi.fit(training_features, training_target)
-            t_end = time.time()
-            training_times.append(t_end - t_start)
-
-            # Predict
-            prediction = pi.predict(testing_features)
-            Predictions.append(pd.Series(prediction, index=testing_target.index))
-
-            # Record run info
-            Pipelineindex.append(p)
-            Preprocessing.append(s)
-            Set.append(i + 1)
-
-    # Create prediction summary
-    predictions_df = pd.DataFrame({
-        'Pipeline': Pipelineindex,
-        'Preprocessing': Preprocessing,
-        'Set': Set,
-        'Sample_IDs': Test_Samples_ID,
-        'Groundtruths': Groundtruths,
-        'Predictions': Predictions
-    })
-
-    # Flatten lists for evaluation
-    predictions_SA_long = predictions_df.explode(['Sample_IDs', 'Groundtruths', 'Predictions']).reset_index(drop=True)
-
-    # Aggregate predictions
-    #from evaluation_functions import aggregate_sample_predictions, evaluate_predictions
-    Final_Results_5CV_ALL_SA = aggregate_sample_predictions(predictions_SA_long)
-
-    # Evaluate predictions
-    results_summary_SA = {}
-    prediction_columns = ["Predictions_Medians", "Predictions_Means", "Predictions_Mean_Corrected", "Predictions_Medians_Corrected"]
-    for col in prediction_columns:
-        results_summary_SA[col] = evaluate_predictions(Final_Results_5CV_ALL_SA["Groundtruths"], Final_Results_5CV_ALL_SA[col])
-
-    R2n = results_summary_SA[Prediction_Type]["r2"]
-    MAEn = results_summary_SA[Prediction_Type]["MAE"]
-    Rn = results_summary_SA[Prediction_Type]["r"]
-
-    return Excluded_Feature, R2n, MAEn, Rn
-
-##################################################################################
 def FeatureImportanceEvaluation_Retrain(
     Selected_Preprocessings,
     Selected_Pipelines,
@@ -672,10 +570,12 @@ def FeatureImportanceEvaluation_Retrain(
     Spectra_Start_Index=16,
     Excluded_Feature=None,
     Prediction_Type='Predictions_Medians',
-    data_folder="SelectedSpectra"
+    data_folder="SelectedSpectra",
+    ablation_sets="all"
+    
 ):
     """
-    Interval ablation by mean-replacement in BOTH train and test (retrain per fold).
+    Interval ablation by mean-replacement in train and test or test alone (retrain per fold).
 
     For each preprocessing 's' and its pipeline 'pi':
       - Load s.csv
@@ -683,11 +583,10 @@ def FeatureImportanceEvaluation_Retrain(
            * Split train/test
            * For each feature f in Excluded_Feature:
                 mean_f = TRAIN[f].mean()
-                TRAIN[f] = mean_f
-                TEST[f]  = mean_f
+                TEST[f]  = mean_f +- TRAIN[f] = mean_f
            * Train cloned pipeline on TRAIN
            * Predict on averaged TEST replicates
-      - Aggregate all fold predictions, compute metrics and return (Excluded_Feature, R2, MAE, r)
+      - Aggregate all fold predictions, compute metrics and return (Excluded Features, R2, MAE, r)
     """
 
     # Output collectors
@@ -710,7 +609,8 @@ def FeatureImportanceEvaluation_Retrain(
                 for feat in Excluded_Feature:
                     mean_val = Training_data[feat].mean()
                     Testing_data.loc[:, feat] = mean_val
-                    Training_data.loc[:, feat] = mean_val
+                    if ablation_sets == "all":
+                        Training_data.loc[:, feat] = mean_val
 
             # Extract training and testing features
             training_features = Training_data.iloc[:, Spectra_Start_Index:]
@@ -774,6 +674,106 @@ def FeatureImportanceEvaluation_Retrain(
     Rn = results_summary_SA[Prediction_Type]["r"]
 
     return Excluded_Feature, R2n, MAEn, Rn
+##################################################################################
+def feature_block_importance(
+    File,
+    Spectra_Start_Index,
+    Selected_Preprocessings_SA,
+    Selected_Pipelines_SA,
+    TestSets,
+    Sample_ID,
+    Target,
+    Prediction_Type,
+    Data_folder,
+    nterval_size=10,
+    step_size=5,
+    verbose=True,
+    logger=None
+):
+    """
+    Perform sliding-window exclusion of spectral features and evaluate model performance.
+
+    Parameters
+    ----------
+    filex : DataFrame
+        Input dataset with spectral features.
+    Spectra_Start_Index : int
+        Column index where spectral features start.
+    Selected_Preprocessings_SA : list
+        Preprocessing options to be used in evaluation.
+    Selected_Pipelines_SA : list
+        Pipelines to evaluate.
+    TestSets : list
+        Test sets for validation.
+    Sample_ID : str
+        Identifier for samples.
+    target : str
+        Target variable name.
+    Prediction_Type : str
+        Type of prediction output (e.g. "Predictions_Medians_Corrected").
+    data_folder : str
+        Folder where spectra or intermediate results are stored.
+    interval_size : int, optional
+        Number of consecutive features per region to exclude. Default = 10.
+    step_size : int, optional
+        Sliding window step size. Default = 5.
+    verbose : bool, optional
+        Whether to print progress to console. Default = True.
+    logger : logging.Logger, optional
+        Logger for recording progress. If None, falls back to print when verbose=True.
+
+    Returns
+    -------
+    dict
+        Dictionary containing:
+        - 'Excluded_Feature_Groups'
+        - 'R2ns'
+        - 'MAEns'
+        - 'Rns'
+    """
+    spectral_columns = filex.columns[Spectra_Start_Index:]
+    num_features = len(spectral_columns)
+
+    Excluded_Feature_Groups = []
+    R2ns, MAEns, Rns = [], [], []
+
+    start_time = time.time()
+
+    for start_idx in range(0, num_features - interval_size + 1, step_size):
+        elapsed_min = (time.time() - start_time) / 60
+        message = f"Evaluating Excluded Features {start_idx} | Elapsed: {elapsed_min:.2f} min"
+        
+        if logger is not None:
+            logger.info(message)
+        elif verbose:
+            print(message, end="\r")
+
+        end_idx = start_idx + interval_size
+        excluded_features = spectral_columns[start_idx:end_idx].tolist()
+
+        Excluded_Feature, R2n, MAEn, Rn = FeatureImportanceEvaluation_Retrain(     
+            Selected_Preprocessings=Selected_Preprocessings_SA,
+            Selected_Pipelines=Selected_Pipelines_SA,
+            TestSets=TestSets,
+            Sample_ID=Sample_ID,
+            target=target,
+            Spectra_Start_Index=Spectra_Start_Index,
+            Excluded_Feature=excluded_features,
+            Prediction_Type=Prediction_Type,
+            data_folder=data_folder
+        )
+
+        Excluded_Feature_Groups.append(excluded_features)
+        R2ns.append(R2n)
+        MAEns.append(MAEn)
+        Rns.append(Rn)
+
+    return {
+        "Excluded_Feature_Groups": Excluded_Feature_Groups,
+        "R2ns": R2ns,
+        "MAEns": MAEns,
+        "Rns": Rns
+    }
 
 ##################################################################################
 def EnsembleML(
