@@ -254,7 +254,7 @@ def pipeline_testsets_evaluation(
     training_times, MAEs, NMAEs, R2s = [], [], [], []
 
     for p, s, pin in zip(range(1, len(Selected_Preprocessings)+1), Selected_Preprocessings, Selected_Pipelines):
-        print(f"Evaluating pipeline {p}/{len(Selected_Preprocessings)}")
+        print(f"Evaluating pipeline {p}/{len(Selected_Preprocessings)}",end="\r")
 
         # Load file
         file_path = os.path.join(data_folder, f"{s}.csv")
@@ -785,39 +785,67 @@ def EnsembleML(
     Spectra_Start_Index=16,
     Prediction_Type='Predictions_Medians',
     data_folder="SelectedSpectra",
-    seed=11
+    seed=11,
+    Output="predictions"
 ):
     """
     Evaluate an ensemble model based on multiple ML pipelines.
+    Returns either the selected prediction vector/series or a tuple of
+    (R2, MAE, r, selected_predictions, all_predictions_df, summary_dict),
+    depending on `Output`.
     """
-    #from evaluation_functions import aggregate_sample_predictions, evaluate_predictions, pipeline_testsets_evaluation
     np.random.seed(seed)
     random.seed(seed)
-    predictions_df=pipeline_testsets_evaluation(
-    Selected_Preprocessings=Selected_Preprocessings,
-    Selected_Pipelines=Selected_Pipelines,
-    TestSets=TestSets,
-    Sample_ID=Sample_ID,
-    target=target,
-    Spectra_Start_Index=Spectra_Start_Index,
-    data_folder=data_folder,
-    seed=seed
+    # Get predictions 
+    predictions_df = pipeline_testsets_evaluation(
+        Selected_Preprocessings=Selected_Preprocessings,
+        Selected_Pipelines=Selected_Pipelines,
+        TestSets=TestSets,
+        Sample_ID=Sample_ID,
+        target=target,
+        Spectra_Start_Index=Spectra_Start_Index,
+        data_folder=data_folder,
+        seed=seed
     )[1]
 
-    # Flatten lists for evaluation
+    # 1) Flatten lists for evaluation
     predictions_SA_long = predictions_df.explode(['Sample_IDs', 'Groundtruths', 'Predictions']).reset_index(drop=True)
 
-    # Aggregate predictions
+    # 2) Aggregate predictions to sample-level
     Final_Results_5CV_ALL_SA = aggregate_sample_predictions(predictions_SA_long)
 
-    # Evaluate predictions
-    results_summary_SA = {}
-    prediction_columns = ["Predictions_Medians", "Predictions_Means", "Predictions_Mean_Corrected", "Predictions_Medians_Corrected"]
-    for col in prediction_columns:
-        results_summary_SA[col] = evaluate_predictions(Final_Results_5CV_ALL_SA["Groundtruths"], Final_Results_5CV_ALL_SA[col])
+    # 3) Evaluate different aggregates
+    prediction_columns = [
+        "Predictions_Medians",
+        "Predictions_Means",
+        "Predictions_Mean_Corrected",
+        "Predictions_Medians_Corrected"
+    ]
 
+    # Validate requested Prediction_Type
+    if Prediction_Type not in prediction_columns:
+        raise ValueError(
+            f"Prediction_Type '{Prediction_Type}' not in {prediction_columns}"
+        )
+
+    results_summary_SA = {}
+    for col in prediction_columns:
+        results_summary_SA[col] = evaluate_predictions(Final_Results_5CV_ALL_SA["Groundtruths"],Final_Results_5CV_ALL_SA[col])
+
+    # 4) Pull metrics for the requested aggregate
     R2n = results_summary_SA[Prediction_Type]["r2"]
     MAEn = results_summary_SA[Prediction_Type]["MAE"]
     Rn = results_summary_SA[Prediction_Type]["r"]
 
-    return R2n, MAEn, Rn, Final_Results_5CV_ALL_SA[Prediction_Type], Final_Results_5CV_ALL_SA, results_summary_SA
+    # 5) Return according to Output flag
+    if Output == "predictions":
+        return Final_Results_5CV_ALL_SA[Prediction_Type]
+    else:
+        return (
+            R2n,
+            MAEn,
+            Rn,
+            Final_Results_5CV_ALL_SA[Prediction_Type],
+            Final_Results_5CV_ALL_SA,
+            results_summary_SA
+        )
