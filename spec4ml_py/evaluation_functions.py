@@ -731,7 +731,7 @@ def feature_block_importance(
         - 'MAEns'
         - 'Rns'
     """
-    spectral_columns = filex.columns[Spectra_Start_Index:]
+    spectral_columns = File.columns[Spectra_Start_Index:]
     num_features = len(spectral_columns)
 
     Excluded_Feature_Groups = []
@@ -756,11 +756,11 @@ def feature_block_importance(
             Selected_Pipelines=Selected_Pipelines_SA,
             TestSets=TestSets,
             Sample_ID=Sample_ID,
-            target=target,
+            target=Target,
             Spectra_Start_Index=Spectra_Start_Index,
             Excluded_Feature=excluded_features,
             Prediction_Type=Prediction_Type,
-            data_folder=data_folder
+            data_folder=Data_folder
         )
 
         Excluded_Feature_Groups.append(excluded_features)
