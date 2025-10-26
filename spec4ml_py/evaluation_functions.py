@@ -774,6 +774,122 @@ def feature_block_importance(
         "MAEns": MAEns,
         "Rns": Rns
     }
+##################################################################################
+def feature_block_importance2(
+    File,
+    Spectra_Start_Index,
+    Selected_Preprocessings_SA,
+    Selected_Pipelines_SA,
+    TestSets,
+    Sample_ID,
+    Target,
+    Prediction_Type,
+    Data_folder,
+    interval_size=10,
+    step_size=5,
+    include_tail: bool = True,
+    verbose=True,
+    logger=None
+):
+    """
+    Perform sliding-window exclusion of spectral features and evaluate model performance.
+    Now includes all features if include_tail=True.
+    Parameters
+    ----------
+    filex : DataFrame
+        Input dataset with spectral features.
+    Spectra_Start_Index : int
+        Column index where spectral features start.
+    Selected_Preprocessings_SA : list
+        Preprocessing options to be used in evaluation.
+    Selected_Pipelines_SA : list
+        Pipelines to evaluate.
+    TestSets : list
+        Test sets for validation.
+    Sample_ID : str
+        Identifier for samples.
+    target : str
+        Target variable name.
+    Prediction_Type : str
+        Type of prediction output (e.g. "Predictions_Medians_Corrected").
+    data_folder : str
+        Folder where spectra or intermediate results are stored.
+    interval_size : int, optional
+        Number of consecutive features per region to exclude. Default = 10.
+    step_size : int, optional
+        Sliding window step size. Default = 5.
+    verbose : bool, optional
+        Whether to print progress to console. Default = True.
+    logger : logging.Logger, optional
+        Logger for recording progress. If None, falls back to print when verbose=True.
+
+    Returns
+    -------
+    dict
+        Dictionary containing:
+        - 'Excluded_Feature_Groups'
+        - 'R2ns'
+        - 'MAEns'
+        - 'Rns'
+    """
+    spectral_columns = File.columns[Spectra_Start_Index:]
+    num_features = len(spectral_columns)
+
+    Excluded_Feature_Groups = []
+    R2ns, MAEns, Rns = [], [], []
+
+    start_time = time.time()
+
+     # Loop range to include all features if include_tail=True
+    if include_tail:
+        loop_range = range(0, num_features, step_size)
+    else:
+        loop_range = range(0, num_features - interval_size + 1, step_size)
+        
+
+    for start_idx in loop_range:
+        elapsed_min = (time.time() - start_time) / 60
+        message = f"Evaluating Excluded Features {start_idx + 1}/{num_features} | Elapsed: {elapsed_min:.2f} min"
+        
+        if logger is not None:
+            logger.info(message)
+        elif verbose:
+            print(message, end="\r")
+        # Compute window boundaries
+        end_idx = min(start_idx + interval_size, num_features)
+        excluded_features = spectral_columns[start_idx:end_idx].tolist()
+
+        # Skip incomplete window if include_tail=False
+        if not include_tail and len(excluded_features) < interval_size:
+            continue
+
+        Excluded_Feature, R2n, MAEn, Rn = FeatureImportanceEvaluation_Retrain(     
+            Selected_Preprocessings=Selected_Preprocessings_SA,
+            Selected_Pipelines=Selected_Pipelines_SA,
+            TestSets=TestSets,
+            Sample_ID=Sample_ID,
+            target=Target,
+            Spectra_Start_Index=Spectra_Start_Index,
+            Excluded_Feature=excluded_features,
+            Prediction_Type=Prediction_Type,
+            data_folder=Data_folder
+        )
+
+        Excluded_Feature_Groups.append(excluded_features)
+        R2ns.append(R2n)
+        MAEns.append(MAEn)
+        Rns.append(Rn)
+
+    if verbose:
+        print(f"\nCompleted in {(time.time() - start_time) / 60:.2f} min. "
+              f"Generated {len(Excluded_Feature_Groups)} feature blocks.")
+
+    return {
+        "Excluded_Feature_Groups": Excluded_Feature_Groups,
+        "R2ns": R2ns,
+        "MAEns": MAEns,
+        "Rns": Rns
+    }
 
 ##################################################################################
 def EnsembleML(
