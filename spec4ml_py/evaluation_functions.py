@@ -41,19 +41,19 @@ from sklearn.feature_selection import (
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error, mean_absolute_percentage_error
 from sklearn.base import clone
 from xgboost import XGBRegressor
+#######################################
 
-
-
-def evaluate_pipelines_performance_averaged(
+def evaluate_pipelines(
     OverAllResults,
     pipelines,
     Selected_Preprocessings,
     TestSets,
     Sample_ID,
     target,
-    grouping_column,
     Index_column,
-    Spectra_Start_Index
+    Spectra_Start_Index,
+    mode="group",            # <-- NEW ARGUMENT: "group" or "spectra"
+    grouping_column=None     # only used for mode="group"
 ):
     PipelineIndex = []
     Spectral_Preprocessing = []
@@ -70,134 +70,83 @@ def evaluate_pipelines_performance_averaged(
         start_time_n = time.time()
         PipelineIndex.append(i)
         exported_pipeline = pipelines[i]
+
         # Set random state
         if hasattr(exported_pipeline, 'steps'):
-                set_param_recursive(exported_pipeline.steps, 'random_state', 11)
+            set_param_recursive(exported_pipeline.steps, 'random_state', 11)
         elif hasattr(exported_pipeline, 'random_state'):
-                setattr(exported_pipeline, 'random_state', 11)
+            setattr(exported_pipeline, 'random_state', 11)
+
         Spectral_Preprocessing.append(Selected_Preprocessings[i])
-        
-        # Load data
-        file_name = os.path.join("SelectedSpectra", Selected_Preprocessings[i] + ".csv")
-        file = pd.read_csv(file_name, sep=",", index_col=Index_column)
-        
-        T_MAEs = []
-        T_NMAEs = []
-        T_R2s = []
 
-        for t in TestSets:
-            TestIndex = t
-            Training_data = file[~file[Sample_ID].isin(TestIndex)]
-            Training_data = Training_data.sort_values(by=[Sample_ID])
-            
-            # Get features and targets
-            training_features = Training_data.iloc[:, Spectra_Start_Index:]
-            training_target = Training_data[target]
-
-
-            groups = Training_data[grouping_column]
-            logo = LeaveOneGroupOut()
-            model = clone(exported_pipeline)
-            predictions = cross_val_predict(model, training_features, training_target, groups=groups, cv=logo, n_jobs=-1)
-
-            Training_data_predictions = Training_data.copy()
-            Training_data_predictions['predictions'] = predictions
-            avg_predictions = Training_data_predictions.groupby(grouping_column)['predictions'].mean()
-            avg_target = Training_data_predictions.groupby(grouping_column)[target].mean()
-
-            T_MAEs.append(mean_absolute_error(avg_target, avg_predictions))
-            T_NMAEs.append(mean_absolute_error(avg_target, avg_predictions) / (max(avg_target) - min(avg_target)))
-            T_R2s.append(r2_score(avg_target, avg_predictions))
-
-        end_time_n = time.time()
-        training_times.append(end_time_n - start_time_n)
-        Pipeline_MAEs.append(np.mean(T_MAEs))
-        Pipeline_MAEsStd.append(np.std(T_MAEs))
-        Pipeline_NMAEs.append(np.mean(T_NMAEs))
-        Pipeline_NMAEsStd.append(np.std(T_NMAEs))
-        Pipeline_R2s.append(np.mean(T_R2s))
-        Pipeline_R2sStd.append(np.std(T_R2s))
-
-    return {
-        "PipelineIndex": PipelineIndex,
-        "Spectral_Preprocessing": Spectral_Preprocessing,
-        "Pipeline_MAEs": Pipeline_MAEs,
-        "Pipeline_MAEsStd": Pipeline_MAEsStd,
-        "Pipeline_NMAEs": Pipeline_NMAEs,
-        "Pipeline_NMAEsStd": Pipeline_NMAEsStd,
-        "Pipeline_R2s": Pipeline_R2s,
-        "Pipeline_R2sStd": Pipeline_R2sStd,
-        "training_times": training_times
-    }
-    
-############################
-
-def evaluate_pipelines_spectra_averaged(
-    OverAllResults,
-    pipelines,
-    Selected_Preprocessings,
-    TestSets,
-    Sample_ID,
-    target,
-    Index_column,
-    Spectra_Start_Index
-):
-    PipelineIndex = []
-    Spectral_Preprocessing = []
-    Pipeline_MAEs = []
-    Pipeline_NMAEs = []
-    Pipeline_R2s = []
-    Pipeline_MAEsStd = []
-    Pipeline_NMAEsStd = []
-    Pipeline_R2sStd = []
-    training_times = []
-
-    for i in range(OverAllResults.shape[0]):
-        print(f"Evaluating pipeline {i+1}/{OverAllResults.shape[0]}")
-        start_time_n = time.time()
-        PipelineIndex.append(i)
-        exported_pipeline = pipelines[i]
-        # Set random state
-        if hasattr(exported_pipeline, 'steps'):
-                set_param_recursive(exported_pipeline.steps, 'random_state', 11)
-        elif hasattr(exported_pipeline, 'random_state'):
-                setattr(exported_pipeline, 'random_state', 11)
-        Spectral_Preprocessing.append(Selected_Preprocessings[i])
-        
         # Load data
         file_name = os.path.join("SelectedSpectra", Selected_Preprocessings[i] + ".csv")
         file = pd.read_csv(file_name, sep=",")
-        
-        T_MAEs = []
-        T_NMAEs = []
-        T_R2s = []
+
+        T_MAEs, T_NMAEs, T_R2s = [], [], []
 
         for t in TestSets:
             TestIndex = t
             Training_data = file[~file[Sample_ID].isin(TestIndex)]
             Training_data = Training_data.sort_values(by=[Sample_ID])
-            Spectra_Index=Training_data[Index_column].unique()
-            predictions=[]
-            GT=[]
-            for si in Spectra_Index:
-                testing_set=Training_data[Training_data[Index_column]==si]
-                training_set=Training_data[~(Training_data[Index_column]==si)]
-                #getting the features and targets
-                training_features=training_set.iloc[:,Spectra_Start_Index:]
-                training_target=training_set[target]
-                testing_features=testing_set.iloc[:,Spectra_Start_Index:]
-                testing_features = testing_features.mean(axis=0).to_frame().T
-                testing_target=testing_set[target].mean()
+
+            # ==============================================================
+            # MODE 1 — GROUP AVERAGING (original evaluate_pipelines_performance_averaged)
+            # ==============================================================
+            if mode == "group":
+                training_features = Training_data.iloc[:, Spectra_Start_Index:]
+                training_target = Training_data[target]
+                groups = Training_data[grouping_column]
+
                 model = clone(exported_pipeline)
-                tpot=model.fit(training_features, training_target)
-                #Statitics and predictions collections
-                predictions.append(tpot.predict(testing_features).item())
-                GT.append(testing_target)
-            T_MAEs.append(mean_absolute_error(GT, predictions))
-            T_NMAEs.append(mean_absolute_error(GT, predictions)/(max(GT)-min(GT)))
-            T_R2s.append(r2_score(GT, predictions))  
-        end_time_n = time.time()
-        training_times.append(end_time_n - start_time_n)
+                predictions = cross_val_predict(
+                    model, training_features, training_target,
+                    groups=groups, cv=LeaveOneGroupOut(), n_jobs=-1
+                )
+
+                df = Training_data.copy()
+                df["predictions"] = predictions
+
+                avg_pred = df.groupby(grouping_column)["predictions"].mean()
+                avg_tgt = df.groupby(grouping_column)[target].mean()
+
+                mae = mean_absolute_error(avg_tgt, avg_pred)
+                nmae = mae / (max(avg_tgt) - min(avg_tgt))
+                r2 = r2_score(avg_tgt, avg_pred)
+
+            # ==============================================================
+            # MODE 2 — SPECTRA AVERAGING (original evaluate_pipelines_spectra_averaged)
+            # ==============================================================
+            else:  # mode == "spectra"
+                Spectra_Index = Training_data[Index_column].unique()
+                preds, GT = [], []
+
+                for si in Spectra_Index:
+                    testing_set = Training_data[Training_data[Index_column] == si]
+                    training_set = Training_data[Training_data[Index_column] != si]
+
+                    training_features = training_set.iloc[:, Spectra_Start_Index:]
+                    training_target = training_set[target]
+                    testing_features = testing_set.iloc[:, Spectra_Start_Index:].mean(axis=0).to_frame().T
+                    testing_target = testing_set[target].mean()
+
+                    model = clone(exported_pipeline)
+                    model.fit(training_features, training_target)
+
+                    preds.append(model.predict(testing_features).item())
+                    GT.append(testing_target)
+
+                mae = mean_absolute_error(GT, preds)
+                nmae = mae / (max(GT) - min(GT))
+                r2 = r2_score(GT, preds)
+
+            # store results per TestSet
+            T_MAEs.append(mae)
+            T_NMAEs.append(nmae)
+            T_R2s.append(r2)
+
+        # aggregate results
+        training_times.append(time.time() - start_time_n)
         Pipeline_MAEs.append(np.mean(T_MAEs))
         Pipeline_MAEsStd.append(np.std(T_MAEs))
         Pipeline_NMAEs.append(np.mean(T_NMAEs))
@@ -216,6 +165,8 @@ def evaluate_pipelines_spectra_averaged(
         "Pipeline_R2sStd": Pipeline_R2sStd,
         "training_times": training_times
     }
+
+
 #######################################
 
 def pipeline_testsets_evaluation(
