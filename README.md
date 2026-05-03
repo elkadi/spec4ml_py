@@ -1,6 +1,6 @@
-# spec4ml_py
+# Spec4ML for Python
 
-a package for handling and analyzing spectral data with special considerations for machine learning applications.
+Spec4ML for Python is a package for handling and analyzing spectral data with special considerations for machine learning applications.
 
 [![CI](https://github.com/elkadi/spec4ml_py/actions/workflows/ci.yml/badge.svg)](https://github.com/elkadi/spec4ml_py/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/spec4ml-py.svg)](https://pypi.org/project/spec4ml-py/)  
@@ -18,7 +18,7 @@ pip install git+https://github.com/elkadi/spec4ml_py.git
 import numpy as np
 from spec4ml_py import __version__
 
-print("spec4ml_py", __version__)
+print("Spec4ML for Python", __version__)
 ```
 
 ## Documentation
