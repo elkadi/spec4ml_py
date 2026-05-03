@@ -7,14 +7,14 @@ build-backend = "hatchling.build"
 name = "spec4ml-py"
 # Use dynamic version from the package __init__.py to avoid drift
 dynamic = ["version"]
-description = "a package for handling and analyzing spectral data with special considerations for machine learning applications"
+description = "Spec4ML for Python: tools for handling and analyzing spectral data for machine learning applications"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "BSD-3-Clause" }
 authors = [
   { name = "Omar Anwar Elkadi", email = "Omar.elkadi@live.com" },
 ]
-keywords = ["spectroscopy", "machine-learning", "preprocessing"]
+keywords = ["spectroscopy", "machine-learning", "preprocessing", "Spec4ML"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
