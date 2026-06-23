@@ -1,4 +1,4 @@
-#System Modules
+# System Modules
 import os
 import sys
 import time
@@ -10,16 +10,24 @@ from copy import copy
 from pathlib import Path
 import numpy as np
 import pandas as pd
-#Statistics Modules
+
+# Statistics Modules
 from math import sqrt
 from scipy.stats import pearsonr
-#Machine Learning
+
+# Machine Learning
 ##TPOT
 from tpot import TPOTRegressor
 from tpot.builtins import OneHotEncoder, StackingEstimator, ZeroCount
 from tpot.export_utils import set_param_recursive
+
 ##SkLearn
-from sklearn.model_selection import KFold, LeaveOneGroupOut, cross_val_score, cross_val_predict
+from sklearn.model_selection import (
+    KFold,
+    LeaveOneGroupOut,
+    cross_val_score,
+    cross_val_predict,
+)
 from sklearn.kernel_approximation import RBFSampler, Nystroem
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.svm import LinearSVR
@@ -27,23 +35,43 @@ from sklearn.neighbors import KNeighborsRegressor
 from sklearn.pipeline import make_pipeline, make_union
 from sklearn.decomposition import FastICA
 from sklearn.ensemble import (
-    AdaBoostRegressor, RandomForestRegressor, ExtraTreesRegressor, GradientBoostingRegressor
+    AdaBoostRegressor,
+    RandomForestRegressor,
+    ExtraTreesRegressor,
+    GradientBoostingRegressor,
 )
 from sklearn.linear_model import ElasticNetCV, SGDRegressor, RidgeCV, LinearRegression
 from sklearn.preprocessing import (
-    FunctionTransformer, PolynomialFeatures, StandardScaler, Binarizer,
-    MinMaxScaler, MaxAbsScaler, RobustScaler, Normalizer
+    FunctionTransformer,
+    PolynomialFeatures,
+    StandardScaler,
+    Binarizer,
+    MinMaxScaler,
+    MaxAbsScaler,
+    RobustScaler,
+    Normalizer,
 )
 
 from sklearn.feature_selection import (
-    SelectFwe, f_regression, SelectPercentile, VarianceThreshold, SelectFromModel
+    SelectFwe,
+    f_regression,
+    SelectPercentile,
+    VarianceThreshold,
+    SelectFromModel,
 )
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error, mean_absolute_percentage_error
+from sklearn.metrics import (
+    mean_squared_error,
+    r2_score,
+    mean_absolute_error,
+    mean_absolute_percentage_error,
+)
 from sklearn.base import clone
 from xgboost import XGBRegressor
 
 
-def _load_spectra(preprocessing_name, data_folder="SelectedSpectra", index_col="Spectra"):
+def _load_spectra(
+    preprocessing_name, data_folder="SelectedSpectra", index_col="Spectra"
+):
     """Load a preprocessed spectra CSV using the package's historical defaults."""
     file_path = os.path.join(data_folder, f"{preprocessing_name}.csv")
     return pd.read_csv(file_path, sep=",", index_col=index_col)
@@ -52,9 +80,9 @@ def _load_spectra(preprocessing_name, data_folder="SelectedSpectra", index_col="
 def _clone_with_random_state(pipeline, seed=11):
     """Clone a pipeline/estimator and set random_state recursively when supported."""
     model = clone(pipeline)
-    if hasattr(model, 'steps'):
-        set_param_recursive(model.steps, 'random_state', seed)
-    elif hasattr(model, 'random_state'):
+    if hasattr(model, "steps"):
+        set_param_recursive(model.steps, "random_state", seed)
+    elif hasattr(model, "random_state"):
         model.random_state = seed
     return model
 
@@ -88,7 +116,9 @@ def _regression_metrics(y_true, y_pred):
 
 def _flatten_predictions(predictions_df):
     """Flatten list/Series prediction rows to one row per sample prediction."""
-    return predictions_df.explode(['Sample_IDs', 'Groundtruths', 'Predictions']).reset_index(drop=True)
+    return predictions_df.explode(
+        ["Sample_IDs", "Groundtruths", "Predictions"]
+    ).reset_index(drop=True)
 
 
 def _evaluate_prediction_columns(final_results, prediction_columns):
@@ -104,7 +134,9 @@ def _build_prediction_summary(predictions_df):
     return aggregate_sample_predictions(_flatten_predictions(predictions_df))
 
 
-def _evaluate_group_averaged_fold(training_data, pipeline, Sample_ID, target, Spectra_Start_Index, grouping_column):
+def _evaluate_group_averaged_fold(
+    training_data, pipeline, Sample_ID, target, Spectra_Start_Index, grouping_column
+):
     """Evaluate one fold using leave-one-group-out predictions averaged by group."""
     if grouping_column is None:
         raise ValueError("grouping_column is required when mode='group'")
@@ -115,7 +147,7 @@ def _evaluate_group_averaged_fold(training_data, pipeline, Sample_ID, target, Sp
         training_target,
         groups=training_data[grouping_column],
         cv=LeaveOneGroupOut(),
-        n_jobs=-1
+        n_jobs=-1,
     )
     df = training_data.copy()
     df["predictions"] = predictions
@@ -124,14 +156,20 @@ def _evaluate_group_averaged_fold(training_data, pipeline, Sample_ID, target, Sp
     return _regression_metrics(avg_tgt, avg_pred)
 
 
-def _evaluate_spectra_averaged_fold(training_data, pipeline, Index_column, target, Spectra_Start_Index):
+def _evaluate_spectra_averaged_fold(
+    training_data, pipeline, Index_column, target, Spectra_Start_Index
+):
     """Evaluate one fold by leaving out each spectrum index and predicting averaged replicates."""
     preds, ground_truth = [], []
     for si in training_data[Index_column].unique():
         testing_set = training_data[training_data[Index_column] == si]
         training_set = training_data[training_data[Index_column] != si]
-        training_features, training_target = _xy(training_set, target, Spectra_Start_Index)
-        testing_features = testing_set.iloc[:, Spectra_Start_Index:].mean(axis=0).to_frame().T
+        training_features, training_target = _xy(
+            training_set, target, Spectra_Start_Index
+        )
+        testing_features = (
+            testing_set.iloc[:, Spectra_Start_Index:].mean(axis=0).to_frame().T
+        )
         testing_target = testing_set[target].mean()
         model = _clone_with_random_state(pipeline)
         model.fit(training_features, training_target)
@@ -139,7 +177,9 @@ def _evaluate_spectra_averaged_fold(training_data, pipeline, Index_column, targe
         ground_truth.append(testing_target)
     return _regression_metrics(ground_truth, preds)
 
+
 #######################################
+
 
 def evaluate_pipelines(
     OverAllResults,
@@ -150,8 +190,8 @@ def evaluate_pipelines(
     target,
     Index_column,
     Spectra_Start_Index,
-    mode="group",            # <-- NEW ARGUMENT: "group" or "spectra"
-    grouping_column=None     # only used for mode="group"
+    mode="group",  # <-- NEW ARGUMENT: "group" or "spectra"
+    grouping_column=None,  # only used for mode="group"
 ):
     if mode not in {"group", "spectra"}:
         raise ValueError("mode must be either 'group' or 'spectra'")
@@ -172,7 +212,8 @@ def evaluate_pipelines(
         PipelineIndex.append(i)
         exported_pipeline = pipelines[i]
         Spectral_Preprocessing.append(Selected_Preprocessings[i])
-        file = _load_spectra(Selected_Preprocessings[i], index_col=None)
+        index_col = Index_column if mode == "group" else None
+        file = _load_spectra(Selected_Preprocessings[i], index_col=index_col)
 
         T_MAEs, T_NMAEs, T_R2s = [], [], []
         for TestIndex in TestSets:
@@ -181,11 +222,20 @@ def evaluate_pipelines(
 
             if mode == "group":
                 mae, nmae, r2 = _evaluate_group_averaged_fold(
-                    Training_data, exported_pipeline, Sample_ID, target, Spectra_Start_Index, grouping_column
+                    Training_data,
+                    exported_pipeline,
+                    Sample_ID,
+                    target,
+                    Spectra_Start_Index,
+                    grouping_column,
                 )
             else:
                 mae, nmae, r2 = _evaluate_spectra_averaged_fold(
-                    Training_data, exported_pipeline, Index_column, target, Spectra_Start_Index
+                    Training_data,
+                    exported_pipeline,
+                    Index_column,
+                    target,
+                    Spectra_Start_Index,
                 )
 
             T_MAEs.append(mae)
@@ -209,11 +259,12 @@ def evaluate_pipelines(
         "Pipeline_NMAEsStd": Pipeline_NMAEsStd,
         "Pipeline_R2s": Pipeline_R2s,
         "Pipeline_R2sStd": Pipeline_R2sStd,
-        "training_times": training_times
+        "training_times": training_times,
     }
 
 
 #######################################
+
 
 def pipeline_testsets_evaluation(
     Selected_Preprocessings,
@@ -223,7 +274,7 @@ def pipeline_testsets_evaluation(
     target,
     Spectra_Start_Index=16,
     data_folder="SelectedSpectra",
-    seed=11
+    seed=11,
 ):
     """
     Evaluate multiple ML pipelines and their crossponding preprocessing on external test sets where each sample has technical replicates.
@@ -251,15 +302,25 @@ def pipeline_testsets_evaluation(
     Test_Samples_ID, Groundtruths, Predictions = [], [], []
     training_times, MAEs, NMAEs, R2s = [], [], [], []
 
-    for p, s, pin in zip(range(1, len(Selected_Preprocessings)+1), Selected_Preprocessings, Selected_Pipelines):
-        print(f"Evaluating pipeline {p}/{len(Selected_Preprocessings)}",end="\r")
+    for p, s, pin in zip(
+        range(1, len(Selected_Preprocessings) + 1),
+        Selected_Preprocessings,
+        Selected_Pipelines,
+    ):
+        print(f"Evaluating pipeline {p}/{len(Selected_Preprocessings)}", end="\r")
 
         file = _load_spectra(s, data_folder=data_folder)
 
         for i, TestIndex in enumerate(TestSets):
-            Training_data, Testing_data = _split_by_test_index(file, Sample_ID, TestIndex)
-            training_features, training_target = _xy(Training_data, target, Spectra_Start_Index)
-            testing_features, testing_target = _average_by_sample(Testing_data, Sample_ID, target, Spectra_Start_Index)
+            Training_data, Testing_data = _split_by_test_index(
+                file, Sample_ID, TestIndex
+            )
+            training_features, training_target = _xy(
+                Training_data, target, Spectra_Start_Index
+            )
+            testing_features, testing_target = _average_by_sample(
+                Testing_data, Sample_ID, target, Spectra_Start_Index
+            )
 
             # Store test IDs and ground truths
             Groundtruths.append(testing_target)
@@ -289,28 +350,34 @@ def pipeline_testsets_evaluation(
             Set.append(i + 1)
 
     # Create result DataFrames
-    metrics_df = pd.DataFrame({
-        'Pipeline': Pipelineindex,
-        'Preprocessing': Preprocessing,
-        'Set': Set,
-        'MAE': MAEs,
-        'NMAE': NMAEs,
-        'R2': R2s,
-        'training_time': training_times })
-    predictions_df = pd.DataFrame({
-        'Pipeline': Pipelineindex,
-        'Preprocessing': Preprocessing,
-        'Set': Set,
-        'Sample_IDs': Test_Samples_ID,
-        'Groundtruths': Groundtruths,
-        'Predictions': Predictions
-    })
+    metrics_df = pd.DataFrame(
+        {
+            "Pipeline": Pipelineindex,
+            "Preprocessing": Preprocessing,
+            "Set": Set,
+            "MAE": MAEs,
+            "NMAE": NMAEs,
+            "R2": R2s,
+            "training_time": training_times,
+        }
+    )
+    predictions_df = pd.DataFrame(
+        {
+            "Pipeline": Pipelineindex,
+            "Preprocessing": Preprocessing,
+            "Set": Set,
+            "Sample_IDs": Test_Samples_ID,
+            "Groundtruths": Groundtruths,
+            "Predictions": Predictions,
+        }
+    )
 
     print("Total Time Elapsed: {:.2f} min".format((time.time() - start_time) / 60))
     return metrics_df, predictions_df
-    
+
 
 ###########################
+
 
 def pipeline_LOOCV_evaluation(
     Selected_Preprocessings,
@@ -318,7 +385,7 @@ def pipeline_LOOCV_evaluation(
     Sample_ID,
     target,
     Spectra_Start_Index=16,
-    data_folder="SelectedSpectra"
+    data_folder="SelectedSpectra",
 ):
     """
     Evaluate multiple ML pipelines and their corresponding preprocessing using LOOCV.
@@ -333,7 +400,9 @@ def pipeline_LOOCV_evaluation(
     # Collectors
     results = []
 
-    for p_idx, (preprocessing_name, pipeline) in enumerate(zip(Selected_Preprocessings, Selected_Pipelines), start=1):
+    for p_idx, (preprocessing_name, pipeline) in enumerate(
+        zip(Selected_Preprocessings, Selected_Pipelines), start=1
+    ):
         print(f"Evaluating pipeline {p_idx}/{len(Selected_Preprocessings)}")
 
         file = _load_spectra(preprocessing_name, data_folder=data_folder)
@@ -341,8 +410,12 @@ def pipeline_LOOCV_evaluation(
         for test_sample in file[Sample_ID].unique():
             Training_data = file[file[Sample_ID] != test_sample]
             Testing_data = file[file[Sample_ID] == test_sample]
-            training_features, training_target = _xy(Training_data, target, Spectra_Start_Index)
-            testing_features, testing_target = _average_by_sample(Testing_data, Sample_ID, target, Spectra_Start_Index)
+            training_features, training_target = _xy(
+                Training_data, target, Spectra_Start_Index
+            )
+            testing_features, testing_target = _average_by_sample(
+                Testing_data, Sample_ID, target, Spectra_Start_Index
+            )
             model = _clone_with_random_state(pipeline)
 
             # Train
@@ -355,18 +428,25 @@ def pipeline_LOOCV_evaluation(
 
             # Store results (flattened)
             for sample_id in testing_target.index:
-                results.append({
-                    'Pipeline': p_idx,
-                    'Preprocessing': preprocessing_name,
-                    'Sample_IDs': sample_id,
-                    'Groundtruths': testing_target.loc[sample_id],
-                    'Predictions': prediction[0],  # Only one prediction here due to LOOCV
-                    'Training_Time': training_time
-                })
+                results.append(
+                    {
+                        "Pipeline": p_idx,
+                        "Preprocessing": preprocessing_name,
+                        "Sample_IDs": sample_id,
+                        "Groundtruths": testing_target.loc[sample_id],
+                        "Predictions": prediction[
+                            0
+                        ],  # Only one prediction here due to LOOCV
+                        "Training_Time": training_time,
+                    }
+                )
 
     print("Total Time Elapsed: {:.2f} min".format((time.time() - start_time) / 60))
     return pd.DataFrame(results)
+
+
 #########################################################################
+
 
 def pipeline_LOOCV_evaluation_with_residual_correction(
     Selected_Preprocessings,
@@ -374,12 +454,14 @@ def pipeline_LOOCV_evaluation_with_residual_correction(
     Sample_ID,
     target,
     Spectra_Start_Index=16,
-    data_folder="SelectedSpectra"
+    data_folder="SelectedSpectra",
 ):
     start_time = time.time()
     results = []
 
-    for p_idx, (preprocessing_name, pipeline) in enumerate(zip(Selected_Preprocessings, Selected_Pipelines), start=1):
+    for p_idx, (preprocessing_name, pipeline) in enumerate(
+        zip(Selected_Preprocessings, Selected_Pipelines), start=1
+    ):
         print(f"Evaluating pipeline {p_idx}/{len(Selected_Preprocessings)}")
 
         file = _load_spectra(preprocessing_name, data_folder=data_folder)
@@ -387,8 +469,12 @@ def pipeline_LOOCV_evaluation_with_residual_correction(
         for test_sample in file[Sample_ID].unique():
             Training_data = file[file[Sample_ID] != test_sample]
             Testing_data = file[file[Sample_ID] == test_sample]
-            training_features, training_target = _xy(Training_data, target, Spectra_Start_Index)
-            testing_features, testing_target = _average_by_sample(Testing_data, Sample_ID, target, Spectra_Start_Index)
+            training_features, training_target = _xy(
+                Training_data, target, Spectra_Start_Index
+            )
+            testing_features, testing_target = _average_by_sample(
+                Testing_data, Sample_ID, target, Spectra_Start_Index
+            )
             model = _clone_with_random_state(pipeline)
 
             # Fit main model
@@ -402,7 +488,12 @@ def pipeline_LOOCV_evaluation_with_residual_correction(
             # Residual correction
             try:
                 # Use inner 5-fold CV to get out-of-fold predictions on training data
-                oof_preds = cross_val_predict(model, training_features, training_target, cv=KFold(n_splits=5, shuffle=True, random_state=11))
+                oof_preds = cross_val_predict(
+                    model,
+                    training_features,
+                    training_target,
+                    cv=KFold(n_splits=5, shuffle=True, random_state=11),
+                )
                 residuals = training_target.values - oof_preds
 
                 # Fit correction model (e.g., residual ~ y_true)
@@ -411,22 +502,26 @@ def pipeline_LOOCV_evaluation_with_residual_correction(
 
                 # TODO: This preserves historical behavior, but uses held-out ground truth
                 # during correction and should be revisited in a behavior-changing release.
-                correction = residual_model.predict(testing_target.values.reshape(-1, 1))
+                correction = residual_model.predict(
+                    testing_target.values.reshape(-1, 1)
+                )
                 corrected_prediction = prediction[0] - correction[0]
             except Exception as e:
                 print(f"Residual correction failed for sample {test_sample}: {e}")
                 corrected_prediction = None  # fallback
 
             for sample_id in testing_target.index:
-                results.append({
-                    'Pipeline': p_idx,
-                    'Preprocessing': preprocessing_name,
-                    'Sample_IDs': sample_id,
-                    'Groundtruths': testing_target.loc[sample_id],
-                    'Predictions': prediction[0],
-                    'Corrected_Predictions': corrected_prediction,
-                    'Training_Time': training_time
-                })
+                results.append(
+                    {
+                        "Pipeline": p_idx,
+                        "Preprocessing": preprocessing_name,
+                        "Sample_IDs": sample_id,
+                        "Groundtruths": testing_target.loc[sample_id],
+                        "Predictions": prediction[0],
+                        "Corrected_Predictions": corrected_prediction,
+                        "Training_Time": training_time,
+                    }
+                )
 
     print("Total Time Elapsed: {:.2f} min".format((time.time() - start_time) / 60))
     return pd.DataFrame(results)
@@ -434,12 +529,20 @@ def pipeline_LOOCV_evaluation_with_residual_correction(
 
 ########################################################################
 
-def aggregate_sample_predictions(predictions_long, grouping_column="Sample_IDs", prediction_column="Predictions",groundtruth_column="Groundtruths",Set_column= "Set", z_thresh=3.5):
+
+def aggregate_sample_predictions(
+    predictions_long,
+    grouping_column="Sample_IDs",
+    prediction_column="Predictions",
+    groundtruth_column="Groundtruths",
+    Set_column="Set",
+    z_thresh=3.5,
+):
     """
     Aggregates predictions per sample with outlier removal using Modified Z-score.
 
     Parameters:
-    - predictions_long (pd.DataFrame): Long-format DataFrame 
+    - predictions_long (pd.DataFrame): Long-format DataFrame
     - z_thresh (float): Threshold for Modified Z-score to detect outliers (default=3.5)
 
     Returns:
@@ -461,32 +564,38 @@ def aggregate_sample_predictions(predictions_long, grouping_column="Sample_IDs",
         prediction_values = group[prediction_column].values
         filtered = remove_outliers_mzscore(prediction_values)
 
-        results.append({
-            "Set": group[Set_column].iloc[0],
-            "Test_Samples_ID": sample_id,
-            "Groundtruths": group[groundtruth_column].iloc[0],
-            "Predictions_Means": np.mean(prediction_values),
-            "Predictions_Mean_Corrected": np.mean(filtered),
-            "Predictions_Medians": np.median(prediction_values),
-            "Predictions_Medians_Corrected": np.median(filtered),
-            # Optionally add other fields like training time if present
-        })
+        results.append(
+            {
+                "Set": group[Set_column].iloc[0],
+                "Test_Samples_ID": sample_id,
+                "Groundtruths": group[groundtruth_column].iloc[0],
+                "Predictions_Means": np.mean(prediction_values),
+                "Predictions_Mean_Corrected": np.mean(filtered),
+                "Predictions_Medians": np.median(prediction_values),
+                "Predictions_Medians_Corrected": np.median(filtered),
+                # Optionally add other fields like training time if present
+            }
+        )
 
     return pd.DataFrame(results)
 
+
 ##################################################################################
+
 
 def evaluate_predictions(true_values, predictions):
     return {
-        'r2': r2_score(true_values, predictions),
-        'MAE': mean_absolute_error(true_values, predictions),
-        'RMSE': sqrt(mean_squared_error(true_values, predictions)),
-        'r': pearsonr(true_values, predictions)[0],
-        'p_value': pearsonr(true_values, predictions)[1],
-        'NMAE (%)': 100 * mean_absolute_error(true_values, predictions) /(np.max(true_values)-np.min(true_values)),
-        'MAPE': mean_absolute_percentage_error(true_values, predictions)
-        
+        "r2": r2_score(true_values, predictions),
+        "MAE": mean_absolute_error(true_values, predictions),
+        "RMSE": sqrt(mean_squared_error(true_values, predictions)),
+        "r": pearsonr(true_values, predictions)[0],
+        "p_value": pearsonr(true_values, predictions)[1],
+        "NMAE (%)": 100
+        * mean_absolute_error(true_values, predictions)
+        / (np.max(true_values) - np.min(true_values)),
+        "MAPE": mean_absolute_percentage_error(true_values, predictions),
     }
+
 
 ####################################################################################
 def get_first_float_column_index(df):
@@ -509,6 +618,8 @@ def get_first_float_column_index(df):
         except ValueError:
             continue
     raise ValueError("No column names can be converted to float.")
+
+
 ##################################################################################
 def FeatureImportanceEvaluation_Retrain(
     Selected_Preprocessings,
@@ -518,10 +629,9 @@ def FeatureImportanceEvaluation_Retrain(
     target,
     Spectra_Start_Index=16,
     Excluded_Feature=None,
-    Prediction_Type='Predictions_Medians',
+    Prediction_Type="Predictions_Medians",
     data_folder="SelectedSpectra",
-    ablation_sets="all"
-    
+    ablation_sets="all",
 ):
     """
     Interval ablation by mean-replacement in train and test or test alone (retrain per fold).
@@ -543,11 +653,17 @@ def FeatureImportanceEvaluation_Retrain(
     Test_Samples_ID, Groundtruths, Predictions = [], [], []
     training_times = []
 
-    for p, s, pi in zip(range(1, len(Selected_Preprocessings) + 1), Selected_Preprocessings, Selected_Pipelines):
+    for p, s, pi in zip(
+        range(1, len(Selected_Preprocessings) + 1),
+        Selected_Preprocessings,
+        Selected_Pipelines,
+    ):
         file = _load_spectra(s, data_folder=data_folder)
 
         for i, TestIndex in enumerate(TestSets):
-            Training_data, Testing_data = _split_by_test_index(file, Sample_ID, TestIndex)
+            Training_data, Testing_data = _split_by_test_index(
+                file, Sample_ID, TestIndex
+            )
             Training_data = Training_data.copy()
             Testing_data = Testing_data.copy()
 
@@ -559,8 +675,12 @@ def FeatureImportanceEvaluation_Retrain(
                     if ablation_sets == "all":
                         Training_data.loc[:, feat] = mean_val
 
-            training_features, training_target = _xy(Training_data, target, Spectra_Start_Index)
-            testing_features, testing_target = _average_by_sample(Testing_data, Sample_ID, target, Spectra_Start_Index)
+            training_features, training_target = _xy(
+                Training_data, target, Spectra_Start_Index
+            )
+            testing_features, testing_target = _average_by_sample(
+                Testing_data, Sample_ID, target, Spectra_Start_Index
+            )
 
             # Store test IDs and ground truths
             Groundtruths.append(testing_target)
@@ -583,26 +703,37 @@ def FeatureImportanceEvaluation_Retrain(
             Set.append(i + 1)
 
     # Create prediction summary
-    predictions_df = pd.DataFrame({
-        'Pipeline': Pipelineindex,
-        'Preprocessing': Preprocessing,
-        'Set': Set,
-        'Sample_IDs': Test_Samples_ID,
-        'Groundtruths': Groundtruths,
-        'Predictions': Predictions
-    })
+    predictions_df = pd.DataFrame(
+        {
+            "Pipeline": Pipelineindex,
+            "Preprocessing": Preprocessing,
+            "Set": Set,
+            "Sample_IDs": Test_Samples_ID,
+            "Groundtruths": Groundtruths,
+            "Predictions": Predictions,
+        }
+    )
 
     Final_Results_5CV_ALL_SA = _build_prediction_summary(predictions_df)
 
     # Evaluate predictions
-    prediction_columns = ["Predictions_Medians", "Predictions_Means", "Predictions_Mean_Corrected", "Predictions_Medians_Corrected"]
-    results_summary_SA = _evaluate_prediction_columns(Final_Results_5CV_ALL_SA, prediction_columns)
+    prediction_columns = [
+        "Predictions_Medians",
+        "Predictions_Means",
+        "Predictions_Mean_Corrected",
+        "Predictions_Medians_Corrected",
+    ]
+    results_summary_SA = _evaluate_prediction_columns(
+        Final_Results_5CV_ALL_SA, prediction_columns
+    )
 
     R2n = results_summary_SA[Prediction_Type]["r2"]
     MAEn = results_summary_SA[Prediction_Type]["MAE"]
     Rn = results_summary_SA[Prediction_Type]["r"]
 
     return Excluded_Feature, R2n, MAEn, Rn
+
+
 ##################################################################################
 def feature_block_importance(
     File,
@@ -617,7 +748,7 @@ def feature_block_importance(
     interval_size=10,
     step_size=5,
     verbose=True,
-    logger=None
+    logger=None,
 ):
     """Backward-compatible wrapper for sliding-window feature-block importance."""
     return feature_block_importance2(
@@ -635,8 +766,9 @@ def feature_block_importance(
         include_tail=False,
         start_index=1,
         verbose=verbose,
-        logger=logger
+        logger=logger,
     )
+
 
 ##################################################################################
 def feature_block_importance2(
@@ -654,7 +786,7 @@ def feature_block_importance2(
     include_tail: bool = True,
     start_index: int = 0,
     verbose=True,
-    logger=None
+    logger=None,
 ):
     """
     Perform sliding-window exclusion of spectral features and evaluate model performance.
@@ -705,17 +837,16 @@ def feature_block_importance2(
 
     start_time = time.time()
 
-     # Loop range to include all features if include_tail=True
+    # Loop range to include all features if include_tail=True
     if include_tail:
         loop_range = range(start_index, num_features, step_size)
     else:
         loop_range = range(start_index, num_features - interval_size + 1, step_size)
-        
 
     for start_idx in loop_range:
         elapsed_min = (time.time() - start_time) / 60
         message = f"Evaluating Excluded Features {start_idx + 1}/{num_features} | Elapsed: {elapsed_min:.2f} min"
-        
+
         if logger is not None:
             logger.info(message)
         elif verbose:
@@ -728,7 +859,7 @@ def feature_block_importance2(
         if not include_tail and len(excluded_features) < interval_size:
             continue
 
-        Excluded_Feature, R2n, MAEn, Rn = FeatureImportanceEvaluation_Retrain(     
+        Excluded_Feature, R2n, MAEn, Rn = FeatureImportanceEvaluation_Retrain(
             Selected_Preprocessings=Selected_Preprocessings_SA,
             Selected_Pipelines=Selected_Pipelines_SA,
             TestSets=TestSets,
@@ -737,7 +868,7 @@ def feature_block_importance2(
             Spectra_Start_Index=Spectra_Start_Index,
             Excluded_Feature=excluded_features,
             Prediction_Type=Prediction_Type,
-            data_folder=Data_folder
+            data_folder=Data_folder,
         )
 
         Excluded_Feature_Groups.append(excluded_features)
@@ -746,15 +877,18 @@ def feature_block_importance2(
         Rns.append(Rn)
 
     if verbose:
-        print(f"\nCompleted in {(time.time() - start_time) / 60:.2f} min. "
-              f"Generated {len(Excluded_Feature_Groups)} feature blocks.")
+        print(
+            f"\nCompleted in {(time.time() - start_time) / 60:.2f} min. "
+            f"Generated {len(Excluded_Feature_Groups)} feature blocks."
+        )
 
     return {
         "Excluded_Feature_Groups": Excluded_Feature_Groups,
         "R2ns": R2ns,
         "MAEns": MAEns,
-        "Rns": Rns
+        "Rns": Rns,
     }
+
 
 ##################################################################################
 def EnsembleML(
@@ -764,10 +898,10 @@ def EnsembleML(
     Sample_ID,
     target,
     Spectra_Start_Index=16,
-    Prediction_Type='Predictions_Medians',
+    Prediction_Type="Predictions_Medians",
     data_folder="SelectedSpectra",
     seed=11,
-    Output="predictions"
+    Output="predictions",
 ):
     """
     Evaluate an ensemble model based on multiple ML pipelines.
@@ -777,7 +911,7 @@ def EnsembleML(
     """
     np.random.seed(seed)
     random.seed(seed)
-    # Get predictions 
+    # Get predictions
     predictions_df = pipeline_testsets_evaluation(
         Selected_Preprocessings=Selected_Preprocessings,
         Selected_Pipelines=Selected_Pipelines,
@@ -786,7 +920,7 @@ def EnsembleML(
         target=target,
         Spectra_Start_Index=Spectra_Start_Index,
         data_folder=data_folder,
-        seed=seed
+        seed=seed,
     )[1]
 
     # 1) Aggregate predictions to sample-level
@@ -797,7 +931,7 @@ def EnsembleML(
         "Predictions_Medians",
         "Predictions_Means",
         "Predictions_Mean_Corrected",
-        "Predictions_Medians_Corrected"
+        "Predictions_Medians_Corrected",
     ]
 
     # Validate requested Prediction_Type
@@ -806,7 +940,9 @@ def EnsembleML(
             f"Prediction_Type '{Prediction_Type}' not in {prediction_columns}"
         )
 
-    results_summary_SA = _evaluate_prediction_columns(Final_Results_5CV_ALL_SA, prediction_columns)
+    results_summary_SA = _evaluate_prediction_columns(
+        Final_Results_5CV_ALL_SA, prediction_columns
+    )
 
     # 4) Pull metrics for the requested aggregate
     R2n = results_summary_SA[Prediction_Type]["r2"]
@@ -823,5 +959,5 @@ def EnsembleML(
             Rn,
             Final_Results_5CV_ALL_SA[Prediction_Type],
             Final_Results_5CV_ALL_SA,
-            results_summary_SA
+            results_summary_SA,
         )

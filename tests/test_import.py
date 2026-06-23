@@ -1,3 +1,10 @@
+import pytest
+
+pytest.importorskip("pandas")
+pytest.importorskip("sklearn")
+
+
 def test_import():
     import spec4ml_py
-    assert hasattr(spec4ml_py, '__version__')
+
+    assert hasattr(spec4ml_py, "__version__")

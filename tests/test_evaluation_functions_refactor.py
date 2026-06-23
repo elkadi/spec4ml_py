@@ -3,9 +3,11 @@ import sys
 import types
 
 import numpy as np
-import pandas as pd
 import pytest
-from sklearn.linear_model import LinearRegression
+
+pd = pytest.importorskip("pandas")
+sklearn_linear = pytest.importorskip("sklearn.linear_model")
+LinearRegression = sklearn_linear.LinearRegression
 
 
 def _evaluation_functions():
@@ -21,6 +23,10 @@ def _evaluation_functions():
         sys.modules["tpot"] = tpot
         sys.modules["tpot.builtins"] = builtins
         sys.modules["tpot.export_utils"] = export_utils
+    if "xgboost" not in sys.modules:
+        xgboost = types.ModuleType("xgboost")
+        xgboost.XGBRegressor = object
+        sys.modules["xgboost"] = xgboost
     return importlib.import_module("spec4ml_py.evaluation_functions")
 
 
@@ -83,6 +89,7 @@ def test_evaluate_pipelines_modes_work(tmp_path, monkeypatch, mode):
     ef = _evaluation_functions()
     _write_toy_spectra(tmp_path)
     monkeypatch.chdir(tmp_path)
+    spectra_start_index = 3 if mode == "group" else 4
 
     result = ef.evaluate_pipelines(
         OverAllResults=pd.DataFrame({"pipeline": [1]}),
@@ -92,7 +99,7 @@ def test_evaluate_pipelines_modes_work(tmp_path, monkeypatch, mode):
         Sample_ID="Sample_ID",
         target="target",
         Index_column="Index",
-        Spectra_Start_Index=3,
+        Spectra_Start_Index=spectra_start_index,
         mode=mode,
         grouping_column="Sample_ID",
     )
@@ -112,6 +119,39 @@ def test_evaluate_pipelines_modes_work(tmp_path, monkeypatch, mode):
     assert len(result["Pipeline_MAEs"]) == 1
 
 
+def test_group_mode_loads_index_column_as_index_and_uses_numeric_features(
+    tmp_path, monkeypatch
+):
+    ef = _evaluation_functions()
+    _write_toy_spectra(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    observed_feature_columns = []
+
+    def fake_cross_val_predict(model, training_features, training_target, **kwargs):
+        observed_feature_columns.extend(training_features.columns.tolist())
+        assert training_features.select_dtypes(include="number").shape[1] == 2
+        assert "Index" not in training_features.columns
+        return np.asarray(training_target)
+
+    monkeypatch.setattr(ef, "cross_val_predict", fake_cross_val_predict)
+
+    ef.evaluate_pipelines(
+        OverAllResults=pd.DataFrame({"pipeline": [1]}),
+        pipelines=[LinearRegression()],
+        Selected_Preprocessings=["toy"],
+        TestSets=[["E"]],
+        Sample_ID="Sample_ID",
+        target="target",
+        Index_column="Index",
+        Spectra_Start_Index=3,
+        mode="group",
+        grouping_column="Sample_ID",
+    )
+
+    assert observed_feature_columns == ["f1", "f2"]
+
+
 def test_evaluate_pipelines_invalid_mode_raises(tmp_path, monkeypatch):
     ef = _evaluation_functions()
     _write_toy_spectra(tmp_path)
@@ -126,7 +166,7 @@ def test_evaluate_pipelines_invalid_mode_raises(tmp_path, monkeypatch):
             Sample_ID="Sample_ID",
             target="target",
             Index_column="Index",
-            Spectra_Start_Index=3,
+            Spectra_Start_Index=4,
             mode="bad",
             grouping_column="Sample_ID",
         )
