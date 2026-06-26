@@ -22,11 +22,6 @@ from scipy.stats import pearsonr
 from copy import copy
 
 # Machine Learning
-##TPOT
-from tpot import TPOTRegressor
-from tpot.export_utils import set_param_recursive
-from tpot.builtins import OneHotEncoder, StackingEstimator, ZeroCount
-
 ##SkLearn
 from sklearn.model_selection import (
     KFold,
