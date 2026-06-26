@@ -28,7 +28,6 @@ dependencies = [
   "scipy>=1.9",
   "pandas>=1.5",
   "scikit-learn>=1.2",
-  "tpot>=0.12",
   "xgboost>=1.7",
 ]
 
@@ -38,6 +37,12 @@ Issues = "https://github.com/elkadi/spec4ml_py/issues"
 Documentation = "https://github.com/elkadi/spec4ml_py#readme"
 
 [project.optional-dependencies]
+tpot-old = [
+  "tpot>=0.12,<1.0",
+]
+tpot-new = [
+  "tpot>=1.0",
+]
 dev = [
   "pandas>=1.5",
   "scikit-learn>=1.2",
