@@ -7,22 +7,14 @@ import pytest
 
 pd = pytest.importorskip("pandas")
 sklearn_linear = pytest.importorskip("sklearn.linear_model")
+sklearn_pipeline = pytest.importorskip("sklearn.pipeline")
+sklearn_ensemble = pytest.importorskip("sklearn.ensemble")
 LinearRegression = sklearn_linear.LinearRegression
+make_pipeline = sklearn_pipeline.make_pipeline
+RandomForestRegressor = sklearn_ensemble.RandomForestRegressor
 
 
 def _evaluation_functions():
-    if "tpot" not in sys.modules:
-        tpot = types.ModuleType("tpot")
-        tpot.TPOTRegressor = object
-        builtins = types.ModuleType("tpot.builtins")
-        builtins.OneHotEncoder = object
-        builtins.StackingEstimator = object
-        builtins.ZeroCount = object
-        export_utils = types.ModuleType("tpot.export_utils")
-        export_utils.set_param_recursive = lambda steps, name, value: None
-        sys.modules["tpot"] = tpot
-        sys.modules["tpot.builtins"] = builtins
-        sys.modules["tpot.export_utils"] = export_utils
     if "xgboost" not in sys.modules:
         xgboost = types.ModuleType("xgboost")
         xgboost.XGBRegressor = object
@@ -54,6 +46,26 @@ def _write_toy_spectra(tmp_path):
             )
     pd.DataFrame(rows).to_csv(folder / "toy.csv", index=False)
     return folder
+
+
+def test_evaluation_functions_imports_without_tpot(monkeypatch):
+    monkeypatch.setitem(sys.modules, "tpot", None)
+    monkeypatch.setitem(sys.modules, "tpot.builtins", None)
+    monkeypatch.setitem(sys.modules, "tpot.export_utils", None)
+    sys.modules.pop("spec4ml_py.evaluation_functions", None)
+
+    ef = _evaluation_functions()
+
+    assert hasattr(ef, "pipeline_testsets_evaluation")
+
+
+def test_clone_with_random_state_sets_nested_random_state():
+    ef = _evaluation_functions()
+    pipe = make_pipeline(RandomForestRegressor())
+
+    cloned = ef._clone_with_random_state(pipe, seed=11)
+
+    assert cloned.get_params()["randomforestregressor__random_state"] == 11
 
 
 def test_aggregate_and_evaluate_predictions_preserve_columns_and_keys():

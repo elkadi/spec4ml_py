@@ -16,11 +16,6 @@ from math import sqrt
 from scipy.stats import pearsonr
 
 # Machine Learning
-##TPOT
-from tpot import TPOTRegressor
-from tpot.builtins import OneHotEncoder, StackingEstimator, ZeroCount
-from tpot.export_utils import set_param_recursive
-
 ##SkLearn
 from sklearn.model_selection import (
     KFold,
@@ -78,12 +73,19 @@ def _load_spectra(
 
 
 def _clone_with_random_state(pipeline, seed=11):
-    """Clone a pipeline/estimator and set random_state recursively when supported."""
+    """Clone a pipeline/estimator and set all random_state parameters when supported."""
     model = clone(pipeline)
-    if hasattr(model, "steps"):
-        set_param_recursive(model.steps, "random_state", seed)
+
+    if hasattr(model, "get_params") and hasattr(model, "set_params"):
+        params = model.get_params(deep=True)
+        random_state_params = {
+            name: seed for name in params if name.endswith("random_state")
+        }
+        if random_state_params:
+            model.set_params(**random_state_params)
     elif hasattr(model, "random_state"):
         model.random_state = seed
+
     return model
 
 
