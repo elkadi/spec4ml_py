@@ -388,6 +388,9 @@ def pipeline_LOOCV_evaluation(
     target,
     Spectra_Start_Index=16,
     data_folder="SelectedSpectra",
+    evaluation_ids=None,
+    exclude_column=None,
+    exclude_ids=None,
 ):
     """
     Evaluate multiple ML pipelines and their corresponding preprocessing using LOOCV.
@@ -408,8 +411,20 @@ def pipeline_LOOCV_evaluation(
         print(f"Evaluating pipeline {p_idx}/{len(Selected_Preprocessings)}")
 
         file = _load_spectra(preprocessing_name, data_folder=data_folder)
+        # Remove the outer test samples before performing inner LOSO.
+        if exclude_column is not None and exclude_ids is not None:
+            file = file[
+                ~file[exclude_column].isin(exclude_ids)
+            ].copy()
+        
+        # By default, evaluate every unique ID.
+        # When evaluation_ids is supplied, evaluate only those IDs.
+        if evaluation_ids is None:
+            ids_to_evaluate = file[Sample_ID].unique()
+        else:
+            ids_to_evaluate = evaluation_ids
 
-        for test_sample in file[Sample_ID].unique():
+        for test_sample in ids_to_evaluate:
             Training_data = file[file[Sample_ID] != test_sample]
             Testing_data = file[file[Sample_ID] == test_sample]
             training_features, training_target = _xy(
