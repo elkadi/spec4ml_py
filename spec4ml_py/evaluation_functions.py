@@ -391,6 +391,7 @@ def pipeline_LOOCV_evaluation(
     evaluation_ids=None,
     exclude_column=None,
     exclude_ids=None,
+    index_col="Spectra"
 ):
     """
     Evaluate multiple ML pipelines and their corresponding preprocessing using LOOCV.
@@ -410,7 +411,7 @@ def pipeline_LOOCV_evaluation(
     ):
         print(f"Evaluating pipeline {p_idx}/{len(Selected_Preprocessings)}")
 
-        file = _load_spectra(preprocessing_name, data_folder=data_folder)
+        file = _load_spectra(preprocessing_name, data_folder=data_folder,index_col=index_col)
         # Remove the outer test samples before performing inner LOSO.
         if exclude_column is not None and exclude_ids is not None:
             file = file[
