@@ -4,6 +4,7 @@ import sys
 import time
 import logging
 import glob
+import joblib
 import random
 import warnings
 from copy import copy
@@ -636,6 +637,163 @@ def get_first_float_column_index(df):
         except ValueError:
             continue
     raise ValueError("No column names can be converted to float.")
+
+
+####################################################################################
+def load_all_models(
+    target,
+    model_folder=None,
+    result_pattern="Result_task_*.csv",
+    preprocessing_col="Preprocessing",
+    mode_col="Mode",
+    scale_col="Spectral_scale",
+    task_col="Task",
+):
+    """Load all fitted models and their metadata for a target.
+
+    The default paths and filenames match the outputs produced by the whole-dataset
+    TPOT workflow. They can be customized for other folder layouts and metadata
+    column names.
+
+    Returns
+    -------
+    tuple
+        ``(models, results)``, where ``models`` is keyed by
+        ``(preprocessing, mode)`` and ``results`` contains the combined task
+        metadata.
+    """
+    model_folder = (
+        Path(model_folder)
+        if model_folder is not None
+        else Path(f"TPOT_WholeMD_{target}")
+    )
+    result_files = sorted(model_folder.glob(result_pattern))
+
+    if not result_files:
+        raise FileNotFoundError(
+            f"No files matching '{result_pattern}' were found in '{model_folder}'."
+        )
+
+    results = pd.concat(
+        [pd.read_csv(result_file) for result_file in result_files],
+        ignore_index=True,
+    )
+
+    if task_col in results.columns:
+        results = results.sort_values(task_col).reset_index(drop=True)
+
+    required_columns = {preprocessing_col, mode_col, scale_col}
+    missing_columns = required_columns.difference(results.columns)
+    if missing_columns:
+        raise ValueError(
+            f"Missing columns in the result files: {sorted(missing_columns)}"
+        )
+
+    models = {}
+    for _, row in results.iterrows():
+        preprocessing = Path(row[preprocessing_col]).stem
+        mode = str(row[mode_col])
+        model_file = model_folder / f"{mode}_{preprocessing}_{target}_fitted.joblib"
+
+        if not model_file.exists():
+            raise FileNotFoundError(f"Model file not found: '{model_file}'")
+
+        key = (preprocessing, mode)
+        if key in models:
+            raise ValueError(f"Duplicate model entry found for {key}.")
+
+        models[key] = {
+            "model": joblib.load(model_file),
+            "scale": row[scale_col],
+            "model_file": str(model_file),
+        }
+
+    return models, results
+
+
+####################################################################################
+def predict_all_models(
+    target,
+    spectra_folder,
+    model_folder=None,
+    sample_col="Sample",
+    day_col="Day",
+    spectra_index_col="Spectra",
+    time_reference=28,
+    spectral_mode="NIR",
+    time_mode="NIR_Time",
+    time_feature_name="Time_scaled",
+):
+    """Predict a spectra dataset with every fitted model for a target.
+
+    Spectral-only models receive the wavelength columns. Time-enabled models also
+    receive ``time_feature_name``, calculated as
+    ``day / time_reference * Spectral_scale``.
+    """
+    models, _ = load_all_models(target=target, model_folder=model_folder)
+    spectra_folder = Path(spectra_folder)
+    predictions = []
+
+    for (preprocessing, mode), model_info in models.items():
+        spectra_file = spectra_folder / f"{preprocessing}.csv"
+        if not spectra_file.exists():
+            raise FileNotFoundError(
+                f"Preprocessed spectra file not found: '{spectra_file}'"
+            )
+
+        data = pd.read_csv(spectra_file, index_col=spectra_index_col)
+        required_columns = {sample_col, day_col}
+        missing_columns = required_columns.difference(data.columns)
+        if missing_columns:
+            raise ValueError(
+                f"Missing columns in '{spectra_file.name}': "
+                f"{sorted(missing_columns)}"
+            )
+
+        spectra_start = get_first_float_column_index(data)
+        features = data.iloc[:, spectra_start:].astype(float)
+
+        if mode == spectral_mode:
+            model_features = features
+        elif mode == time_mode:
+            scale = model_info["scale"]
+            if pd.isna(scale):
+                raise ValueError(
+                    "The spectral scale is missing for "
+                    f"preprocessing='{preprocessing}', mode='{mode}'."
+                )
+            model_features = features.assign(
+                **{
+                    time_feature_name: (
+                        data[day_col].to_numpy() / time_reference * float(scale)
+                    )
+                }
+            )
+        else:
+            raise ValueError(f"Unsupported model mode: {mode}")
+
+        prediction = model_info["model"].predict(model_features)
+        model_predictions = pd.DataFrame(
+            {
+                spectra_index_col: data.index,
+                sample_col: data[sample_col].to_numpy(),
+                day_col: data[day_col].to_numpy(),
+                "Target": target,
+                "Preprocessing": preprocessing,
+                "Mode": mode,
+                "Prediction": np.asarray(prediction).ravel(),
+            }
+        )
+
+        if target in data.columns:
+            model_predictions["Groundtruth"] = data[target].to_numpy()
+
+        predictions.append(model_predictions)
+
+    if not predictions:
+        raise ValueError(f"No predictions were generated for '{target}'.")
+
+    return pd.concat(predictions, ignore_index=True)
 
 
 ##################################################################################
