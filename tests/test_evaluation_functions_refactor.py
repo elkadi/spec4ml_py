@@ -9,9 +9,19 @@ pd = pytest.importorskip("pandas")
 sklearn_linear = pytest.importorskip("sklearn.linear_model")
 sklearn_pipeline = pytest.importorskip("sklearn.pipeline")
 sklearn_ensemble = pytest.importorskip("sklearn.ensemble")
+joblib = pytest.importorskip("joblib")
 LinearRegression = sklearn_linear.LinearRegression
 make_pipeline = sklearn_pipeline.make_pipeline
 RandomForestRegressor = sklearn_ensemble.RandomForestRegressor
+
+
+class ColumnSumRegressor:
+    def __init__(self, expected_columns):
+        self.expected_columns = expected_columns
+
+    def predict(self, features):
+        assert features.columns.tolist() == self.expected_columns
+        return features.sum(axis=1).to_numpy()
 
 
 def _evaluation_functions():
@@ -182,3 +192,79 @@ def test_evaluate_pipelines_invalid_mode_raises(tmp_path, monkeypatch):
             mode="bad",
             grouping_column="Sample_ID",
         )
+
+
+def _write_whole_dataset_models(tmp_path):
+    target = "EqModulus"
+    model_folder = tmp_path / f"TPOT_WholeMD_{target}"
+    model_folder.mkdir()
+
+    pd.DataFrame(
+        {
+            "Task": [2],
+            "Preprocessing": ["source/prep.csv"],
+            "Mode": ["NIR_Time"],
+            "Spectral_scale": [14.0],
+        }
+    ).to_csv(model_folder / "Result_task_2.csv", index=False)
+    pd.DataFrame(
+        {
+            "Task": [1],
+            "Preprocessing": ["source/prep.csv"],
+            "Mode": ["NIR"],
+            "Spectral_scale": [14.0],
+        }
+    ).to_csv(model_folder / "Result_task_1.csv", index=False)
+
+    joblib.dump(
+        ColumnSumRegressor(["1000.0", "1001.0"]),
+        model_folder / f"NIR_prep_{target}_fitted.joblib",
+    )
+    joblib.dump(
+        ColumnSumRegressor(["1000.0", "1001.0", "Time_scaled"]),
+        model_folder / f"NIR_Time_prep_{target}_fitted.joblib",
+    )
+
+    spectra_folder = tmp_path / "TC_SelectedSpectra" / target
+    spectra_folder.mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "Spectra": ["A_1", "B_1"],
+            "Sample": ["A", "B"],
+            "Day": [14, 28],
+            target: [3.0, 7.0],
+            "1000.0": [1.0, 3.0],
+            "1001.0": [2.0, 4.0],
+        }
+    ).to_csv(spectra_folder / "prep.csv", index=False)
+
+    return target, model_folder, spectra_folder
+
+
+def test_load_all_models_combines_and_sorts_task_results(tmp_path):
+    ef = _evaluation_functions()
+    target, model_folder, _ = _write_whole_dataset_models(tmp_path)
+
+    models, results = ef.load_all_models(target, model_folder=model_folder)
+
+    assert list(results["Task"]) == [1, 2]
+    assert set(models) == {("prep", "NIR"), ("prep", "NIR_Time")}
+    assert models[("prep", "NIR_Time")]["scale"] == 14.0
+
+
+def test_predict_all_models_handles_spectral_and_scaled_time_modes(tmp_path):
+    ef = _evaluation_functions()
+    target, model_folder, spectra_folder = _write_whole_dataset_models(tmp_path)
+
+    predictions = ef.predict_all_models(
+        target,
+        spectra_folder=spectra_folder,
+        model_folder=model_folder,
+    )
+
+    nir = predictions[predictions["Mode"] == "NIR"].reset_index(drop=True)
+    nir_time = predictions[predictions["Mode"] == "NIR_Time"].reset_index(drop=True)
+    assert nir["Prediction"].tolist() == [3.0, 7.0]
+    assert nir_time["Prediction"].tolist() == [10.0, 21.0]
+    assert nir["Groundtruth"].tolist() == [3.0, 7.0]
+    assert predictions["Target"].unique().tolist() == [target]
