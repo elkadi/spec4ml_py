@@ -22,6 +22,16 @@ from spec4ml_py import __version__
 print("Spec4ML for Python", __version__)
 ```
 
+Reusable, leakage-safe spectroscopy preprocessing is available as scikit-learn
+transformers:
+
+```python
+from spec4ml_py.preprocessing import MSC, SNV, SavitzkyGolay
+```
+
+See the [spectral preprocessing guide](docs/preprocessing.md) for the complete
+API and pipeline examples.
+
 ## Documentation
 
 Complete package documentation is available here:
